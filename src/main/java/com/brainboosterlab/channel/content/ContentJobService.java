@@ -11,9 +11,11 @@ import org.springframework.transaction.annotation.Transactional;
 public class ContentJobService {
 
     private final ContentJobRepository repository;
+    private final PuzzleScriptGenerator generator;
 
-    public ContentJobService(ContentJobRepository repository) {
+    public ContentJobService(ContentJobRepository repository, PuzzleScriptGenerator generator) {
         this.repository = repository;
+        this.generator = generator;
     }
 
     @Transactional
@@ -30,6 +32,26 @@ public class ContentJobService {
         ContentJob job = repository.findById(id)
                 .orElseThrow(() -> new ContentJobNotFoundException(id));
         job.approve();
+        return repository.save(job);
+    }
+
+    @Transactional
+    public ContentJob generate(UUID id) {
+        ContentJob job = repository.findById(id)
+                .orElseThrow(() -> new ContentJobNotFoundException(id));
+        job.startGenerating();
+        repository.save(job);
+        try {
+            job.markGenerated(generator.generate(job));
+            return repository.save(job);
+        } catch (RuntimeException exception) {
+            return markFailed(job, exception);
+        }
+    }
+
+    private ContentJob markFailed(ContentJob job, RuntimeException exception) {
+        // Keep the failure visible to the workflow owner while allowing a later retry policy.
+        job.markFailed(exception.getMessage());
         return repository.save(job);
     }
 }

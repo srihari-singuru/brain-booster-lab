@@ -33,10 +33,11 @@ curl --request POST http://localhost:8080/api/v1/content-jobs \
 
 List the approval queue with `GET /api/v1/content-jobs`, then approve a draft with `POST /api/v1/content-jobs/{id}/approve`.
 
+Generate a script with `POST /api/v1/content-jobs/{id}/generate`. Local development defaults to a deterministic mock generator. To use the OpenAI Responses API, set `GENERATION_MODE=live`, `OPENAI_MODEL`, and `OPENAI_API_KEY` in the environment. The key is read by the official Java client and is never persisted by the application.
+
 Jobs move through explicit states: `DRAFT`, `APPROVED`, `GENERATING`, `RENDERING`, `READY`, `PUBLISHED`, and `FAILED`.
 
 ## Next build slices
 
-1. OpenAI-backed puzzle/script generation adapter
-2. FFmpeg render pipeline with reproducible local artifacts
-3. WhatsApp command adapter and YouTube publishing adapter
+1. FFmpeg render pipeline with reproducible local artifacts
+2. WhatsApp command adapter and YouTube publishing adapter
