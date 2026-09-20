@@ -42,13 +42,16 @@ class FfmpegVideoRenderer implements VideoRenderer {
 
     private final String ffmpegPath;
     private final Path outputDirectory;
+    private final PuzzleArtworkGenerator artworkGenerator;
 
     FfmpegVideoRenderer(
             @Value("${brain-booster.render.ffmpeg-path:ffmpeg}") String ffmpegPath,
-            @Value("${brain-booster.render.output-dir:outputs/rendered}") String outputDirectory
+            @Value("${brain-booster.render.output-dir:outputs/rendered}") String outputDirectory,
+            PuzzleArtworkGenerator artworkGenerator
     ) {
         this.ffmpegPath = ffmpegPath;
         this.outputDirectory = Path.of(outputDirectory);
+        this.artworkGenerator = artworkGenerator;
     }
 
     @Override
@@ -59,7 +62,8 @@ class FfmpegVideoRenderer implements VideoRenderer {
             Path artifact = outputDirectory.resolve(job.getId() + ".mp4").toAbsolutePath();
             workDirectory = Files.createTempDirectory(outputDirectory, "frames-" + job.getId() + "-");
             PuzzleText puzzle = PuzzleText.from(job);
-            List<Frame> frames = createFrames(workDirectory, puzzle);
+            BufferedImage artwork = artworkGenerator.generate(job);
+            List<Frame> frames = createFrames(workDirectory, puzzle, artwork);
             Path concatFile = writeConcatFile(workDirectory, frames);
             List<String> command = List.of(
                     ffmpegPath,
@@ -87,15 +91,15 @@ class FfmpegVideoRenderer implements VideoRenderer {
         }
     }
 
-    private List<Frame> createFrames(Path workDirectory, PuzzleText puzzle) throws IOException {
+    private List<Frame> createFrames(Path workDirectory, PuzzleText puzzle, BufferedImage artwork) throws IOException {
         List<Frame> frames = new ArrayList<>();
         frames.add(writeFrame(workDirectory, "01-title.png", image -> drawTitle(image, puzzle)));
         for (int seconds = 5; seconds >= 1; seconds--) {
             int countdown = seconds;
             frames.add(writeFrame(workDirectory, "0" + (7 - seconds) + "-puzzle-" + seconds + ".png",
-                    image -> drawPuzzle(image, puzzle, countdown, false)));
+                    image -> drawPuzzle(image, puzzle, artwork, countdown, false)));
         }
-        frames.add(writeFrame(workDirectory, "07-answer.png", image -> drawPuzzle(image, puzzle, 0, true)));
+        frames.add(writeFrame(workDirectory, "07-answer.png", image -> drawPuzzle(image, puzzle, artwork, 0, true)));
         frames.add(writeFrame(workDirectory, "08-cta.png", image -> drawCta(image, puzzle)));
         return frames;
     }
@@ -159,17 +163,17 @@ class FfmpegVideoRenderer implements VideoRenderer {
         drawProgress(g, 0.08);
     }
 
-    private void drawPuzzle(Graphics2D g, PuzzleText puzzle, int countdown, boolean reveal) {
+    private void drawPuzzle(Graphics2D g, PuzzleText puzzle, BufferedImage artwork, int countdown, boolean reveal) {
         background(g, new GradientPaint(0, 0, new Color(27, 49, 105), WIDTH, HEIGHT, NAVY));
         drawPill(g, reveal ? "ANSWER REVEAL" : "FIND THE HIDDEN STAR", 96, 68, 650, 64,
                 reveal ? YELLOW : CYAN, NAVY);
-        drawCentered(g, reveal ? puzzle.answer() : puzzle.puzzle(), 960, 172, 34, Font.BOLD, CREAM, 1640);
-        drawPuzzleBoard(g, reveal);
+        drawCentered(g, reveal ? puzzle.answer() : puzzle.puzzle(), 830, 172, 32, Font.BOLD, CREAM, 1320);
+        drawArtworkScene(g, artwork, reveal);
         if (!reveal) {
             drawCountdown(g, countdown);
-            drawCentered(g, "Look closely — one tile is different!", 960, 1015, 30, Font.PLAIN, CREAM, 1500);
+            drawCentered(g, "Look closely — one detail is different!", 960, 1015, 30, Font.PLAIN, CREAM, 1500);
         } else {
-            drawPill(g, "THE STAR WAS HIDING IN TILE 7", 565, 910, 790, 68, YELLOW, NAVY);
+            drawPill(g, "THE STAR WAS HIDING BY THE BOOKSHELF", 505, 910, 910, 68, YELLOW, NAVY);
             drawCentered(g, "Great eye! Ready for another Brain Booster?", 960, 1015, 30, Font.PLAIN, CREAM, 1500);
         }
     }
@@ -184,46 +188,26 @@ class FfmpegVideoRenderer implements VideoRenderer {
         drawProgress(g, 1.0);
     }
 
-    private void drawPuzzleBoard(Graphics2D g, boolean reveal) {
-        int boardX = 330;
-        int boardY = 255;
-        int tile = 205;
-        int gap = 28;
-        Color[] colors = {PINK, YELLOW, CYAN, new Color(151, 112, 245)};
-        for (int row = 0; row < 3; row++) {
-            for (int col = 0; col < 4; col++) {
-                int index = row * 4 + col + 1;
-                int x = boardX + col * (tile + gap);
-                int y = boardY + row * (tile + gap);
-                g.setColor(new Color(255, 255, 255, 24));
-                g.fillRoundRect(x, y, tile, tile, 34, 34);
-                g.setColor(colors[(index - 1) % colors.length]);
-                if (index == 7) {
-                    drawStar(g, x + tile / 2, y + tile / 2, 67, YELLOW);
-                    if (reveal) {
-                        g.setColor(YELLOW);
-                        g.setStroke(new BasicStroke(10));
-                        g.drawRoundRect(x - 9, y - 9, tile + 18, tile + 18, 44, 44);
-                    }
-                } else if (index % 3 == 0) {
-                    g.fillOval(x + 58, y + 58, 90, 90);
-                    g.setColor(new Color(255, 255, 255, 80));
-                    g.fillOval(x + 80, y + 76, 22, 22);
-                } else if (index % 3 == 1) {
-                    g.fillRoundRect(x + 58, y + 58, 90, 90, 22, 22);
-                    g.setColor(new Color(255, 255, 255, 85));
-                    g.fillOval(x + 78, y + 76, 22, 22);
-                } else {
-                    Path2D triangle = new Path2D.Double();
-                    triangle.moveTo(x + 103, y + 48);
-                    triangle.lineTo(x + 157, y + 151);
-                    triangle.lineTo(x + 49, y + 151);
-                    triangle.closePath();
-                    g.fill(triangle);
-                    g.setColor(new Color(255, 255, 255, 85));
-                    g.fillOval(x + 92, y + 94, 22, 22);
-                }
-            }
+    private void drawArtworkScene(Graphics2D g, BufferedImage artwork, boolean reveal) {
+        int x = 150;
+        int y = 230;
+        int width = 1620;
+        int height = 690;
+        g.setColor(new Color(8, 15, 38, 180));
+        g.fillRoundRect(x - 14, y - 14, width + 28, height + 28, 38, 38);
+        g.drawImage(artwork, x, y, width, height, null);
+
+        // The hidden clue is placed by the local compositor, so the answer location
+        // stays deterministic even when the background artwork comes from an AI model.
+        int starX = 1328;
+        int starY = 530;
+        if (reveal) {
+            g.setColor(YELLOW);
+            g.setStroke(new BasicStroke(12));
+            g.drawOval(starX - 86, starY - 86, 172, 172);
+            drawStar(g, starX, starY, 46, YELLOW);
+        } else {
+            drawStar(g, starX, starY, 27, new Color(255, 211, 66, 200));
         }
     }
 

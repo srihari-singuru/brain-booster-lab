@@ -8,7 +8,7 @@ Local-first production system for family-friendly puzzle and detective videos.
 - PostgreSQL in Docker Compose for durable workflow state
 - Flyway migrations for schema changes
 - FFmpeg plus Java2D for deterministic media assembly: title card, colorful puzzle board, countdown, answer reveal, and CTA
-- OpenAI API only for AI generation, configured later through environment variables
+- OpenAI API only for optional AI generation and scene artwork, configured later through environment variables
 - Future control and publishing adapters: WhatsApp and YouTube
 
 ## Start locally
@@ -36,6 +36,8 @@ curl --request POST http://localhost:8080/api/v1/content-jobs \
 List the approval queue with `GET /api/v1/content-jobs`, then approve a draft with `POST /api/v1/content-jobs/{id}/approve`.
 
 Generate a script with `POST /api/v1/content-jobs/{id}/generate`. Local development defaults to a deterministic mock generator. To use the OpenAI Responses API, set `GENERATION_MODE=live`, `OPENAI_MODEL`, and `OPENAI_API_KEY` in the environment. The key is read by the official Java client and is never persisted by the application.
+
+Artwork is independently configurable. The default `ARTWORK_MODE=mock` creates a local illustrated mystery-room scene with Java2D. Set `ARTWORK_MODE=live`, `OPENAI_IMAGE_MODEL`, and `OPENAI_API_KEY` to have the OpenAI Image API create the scene artwork. In both modes, the local renderer adds the deterministic hidden clue, countdown, reveal highlight, captions, and CTA before FFmpeg assembles the MP4.
 
 Render a generated script with `POST /api/v1/content-jobs/{id}/render`. The local renderer creates colorful 1920x1080 PNG scenes in memory, then FFmpeg assembles them into a reproducible MP4 under `outputs/rendered` with a five-second countdown, highlighted answer reveal, captions, and CTA. Temporary scene files are removed after rendering; the artifact path and render command are recorded in PostgreSQL.
 
