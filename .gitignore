@@ -1,0 +1,10 @@
+target/
+.env
+.idea/
+*.iml
+.DS_Store
+
+# Generated media and local job artifacts
+media/
+work/
+outputs/
