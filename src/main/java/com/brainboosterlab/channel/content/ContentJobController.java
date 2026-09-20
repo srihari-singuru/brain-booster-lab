@@ -44,4 +44,9 @@ public class ContentJobController {
     ContentJobResponse generate(@PathVariable UUID id) {
         return ContentJobResponse.from(service.generate(id));
     }
+
+    @PostMapping("/{id}/render")
+    ContentJobResponse render(@PathVariable UUID id) {
+        return ContentJobResponse.from(service.render(id));
+    }
 }

@@ -50,6 +50,15 @@ public class ContentJob {
     @Column(name = "output_tokens")
     private Integer outputTokens;
 
+    @Column(name = "artifact_path", length = 500)
+    private String artifactPath;
+
+    @Column(name = "render_command", columnDefinition = "text")
+    private String renderCommand;
+
+    @Column(name = "rendered_at")
+    private OffsetDateTime renderedAt;
+
     protected ContentJob() {
     }
 
@@ -96,6 +105,23 @@ public class ContentJob {
         status = ContentJobStatus.FAILED;
     }
 
+    public void startRendering() {
+        if (status != ContentJobStatus.READY) {
+            throw new IllegalStateException("Only ready scripts can be rendered");
+        }
+        status = ContentJobStatus.RENDERING;
+    }
+
+    public void markRendered(RenderResult result) {
+        if (status != ContentJobStatus.RENDERING) {
+            throw new IllegalStateException("Content job is not being rendered");
+        }
+        artifactPath = result.artifactPath();
+        renderCommand = result.command();
+        renderedAt = OffsetDateTime.now();
+        status = ContentJobStatus.RENDERED;
+    }
+
     public UUID getId() {
         return id;
     }
@@ -138,6 +164,18 @@ public class ContentJob {
 
     public Integer getOutputTokens() {
         return outputTokens;
+    }
+
+    public String getArtifactPath() {
+        return artifactPath;
+    }
+
+    public String getRenderCommand() {
+        return renderCommand;
+    }
+
+    public OffsetDateTime getRenderedAt() {
+        return renderedAt;
     }
 
     @PrePersist

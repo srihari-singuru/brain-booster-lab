@@ -6,6 +6,7 @@ public enum ContentJobStatus {
     GENERATING,
     RENDERING,
     READY,
+    RENDERED,
     PUBLISHED,
     FAILED
 }

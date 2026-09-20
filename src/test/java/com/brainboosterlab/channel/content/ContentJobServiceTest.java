@@ -24,6 +24,9 @@ class ContentJobServiceTest {
     @Mock
     private PuzzleScriptGenerator generator;
 
+    @Mock
+    private VideoRenderer renderer;
+
     @InjectMocks
     private ContentJobService service;
 
@@ -74,5 +77,23 @@ class ContentJobServiceTest {
         assertThat(generated.getStatus()).isEqualTo(ContentJobStatus.READY);
         assertThat(generated.getScriptText()).contains("TITLE: A clue");
         verify(generator).generate(job);
+    }
+
+    @Test
+    void rendersReadyJobAndStoresArtifact() {
+        UUID id = UUID.randomUUID();
+        ContentJob job = ContentJob.draft("A clue", "Find the star");
+        job.approve();
+        job.startGenerating();
+        job.markGenerated(new GeneratedScript("TITLE: A clue", "mock", "mock-response", null, null));
+        when(repository.findById(id)).thenReturn(Optional.of(job));
+        when(repository.save(job)).thenReturn(job);
+        when(renderer.render(job)).thenReturn(new RenderResult("outputs/rendered/test.mp4", "ffmpeg ..."));
+
+        ContentJob rendered = service.render(id);
+
+        assertThat(rendered.getStatus()).isEqualTo(ContentJobStatus.RENDERED);
+        assertThat(rendered.getArtifactPath()).isEqualTo("outputs/rendered/test.mp4");
+        verify(renderer).render(job);
     }
 }

@@ -13,6 +13,9 @@ public record ContentJobResponse(
         String generationResponseId,
         Integer inputTokens,
         Integer outputTokens,
+        String artifactPath,
+        String renderCommand,
+        OffsetDateTime renderedAt,
         OffsetDateTime createdAt,
         OffsetDateTime updatedAt
 ) {
@@ -21,6 +24,7 @@ public record ContentJobResponse(
                 job.getId(), job.getTitle(), job.getPrompt(), job.getStatus(),
                 job.getScriptText(), job.getGenerationModel(), job.getGenerationResponseId(),
                 job.getInputTokens(), job.getOutputTokens(),
+                job.getArtifactPath(), job.getRenderCommand(), job.getRenderedAt(),
                 job.getCreatedAt(), job.getUpdatedAt()
         );
     }

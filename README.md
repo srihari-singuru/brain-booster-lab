@@ -35,9 +35,10 @@ List the approval queue with `GET /api/v1/content-jobs`, then approve a draft wi
 
 Generate a script with `POST /api/v1/content-jobs/{id}/generate`. Local development defaults to a deterministic mock generator. To use the OpenAI Responses API, set `GENERATION_MODE=live`, `OPENAI_MODEL`, and `OPENAI_API_KEY` in the environment. The key is read by the official Java client and is never persisted by the application.
 
-Jobs move through explicit states: `DRAFT`, `APPROVED`, `GENERATING`, `RENDERING`, `READY`, `PUBLISHED`, and `FAILED`.
+Render a generated script with `POST /api/v1/content-jobs/{id}/render`. The local FFmpeg renderer writes a reproducible MP4 under `outputs/rendered` and records the artifact path and command in PostgreSQL.
+
+Jobs move through explicit states: `DRAFT`, `APPROVED`, `GENERATING`, `READY`, `RENDERING`, `RENDERED`, `PUBLISHED`, and `FAILED`.
 
 ## Next build slices
 
-1. FFmpeg render pipeline with reproducible local artifacts
-2. WhatsApp command adapter and YouTube publishing adapter
+1. WhatsApp command adapter and YouTube publishing adapter

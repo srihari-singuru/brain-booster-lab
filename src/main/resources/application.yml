@@ -26,3 +26,6 @@ brain-booster:
   generation:
     mode: ${GENERATION_MODE:mock}
     model: ${OPENAI_MODEL:}
+  render:
+    ffmpeg-path: ${FFMPEG_PATH:ffmpeg}
+    output-dir: ${RENDER_OUTPUT_DIR:outputs/rendered}
