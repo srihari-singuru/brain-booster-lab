@@ -15,6 +15,10 @@ Local-first production system for family-friendly puzzle and detective videos.
 
 ```bash
 cp .env.example .env
+# Edit .env with your local values, then load it into this terminal:
+set -a
+source .env
+set +a
 docker compose up -d postgres
 mvn spring-boot:run
 ```
@@ -38,6 +42,20 @@ List the approval queue with `GET /api/v1/content-jobs`, then approve a draft wi
 Generate a script with `POST /api/v1/content-jobs/{id}/generate`. Local development defaults to a deterministic mock generator. To use the OpenAI Responses API, set `GENERATION_MODE=live`, `OPENAI_MODEL`, and `OPENAI_API_KEY` in the environment. The key is read by the official Java client and is never persisted by the application.
 
 Artwork is independently configurable. The default `ARTWORK_MODE=mock` creates a local illustrated mystery-room scene with Java2D. Set `ARTWORK_MODE=live`, `OPENAI_IMAGE_MODEL`, and `OPENAI_API_KEY` to have the OpenAI Image API create the scene artwork. In both modes, the local renderer adds the deterministic hidden clue, countdown, reveal highlight, captions, and CTA before FFmpeg assembles the MP4.
+
+### Local-only OpenAI artwork configuration
+
+The recommended current image model for this project is `gpt-image-2.5-flare`, a fast, high-quality image-generation model. If that model is not enabled for your account, use another image model available to your project, such as `gpt-image-2`.
+
+Put these values only in the ignored local `.env` file:
+
+```dotenv
+ARTWORK_MODE=live
+OPENAI_IMAGE_MODEL=gpt-image-2.5-flare
+OPENAI_API_KEY=your-key-here
+```
+
+Keep `GENERATION_MODE=mock` if you want to use OpenAI only for artwork. Set `GENERATION_MODE=live` and provide `OPENAI_MODEL` as well if you also want OpenAI to write the puzzle script. Never put a real key in `.env.example`, source files, README files, or committed GitHub settings. The application reads the key from the process environment and does not persist it.
 
 Render a generated script with `POST /api/v1/content-jobs/{id}/render`. The local renderer creates colorful 1920x1080 PNG scenes in memory, then FFmpeg assembles them into a reproducible MP4 under `outputs/rendered` with a five-second countdown, highlighted answer reveal, captions, and CTA. Temporary scene files are removed after rendering; the artifact path and render command are recorded in PostgreSQL.
 
