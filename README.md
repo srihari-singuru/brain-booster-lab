@@ -21,6 +21,8 @@ mvn spring-boot:run
 
 Check the service at `http://localhost:8080/api/v1/status` and health at `http://localhost:8080/actuator/health`.
 
+Open `http://localhost:8080/` for the local Brain Booster Lab control center. It provides buttons to create briefs, approve scripts, generate content, and render videos; no WhatsApp or publishing account is required.
+
 ## Content-job API
 
 Create a draft job:
