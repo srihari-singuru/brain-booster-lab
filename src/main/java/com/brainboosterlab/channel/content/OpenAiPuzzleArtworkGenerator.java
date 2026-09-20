@@ -40,17 +40,22 @@ class OpenAiPuzzleArtworkGenerator implements PuzzleArtworkGenerator {
 
     @Override
     public BufferedImage generate(ContentJob job) {
-        String prompt = "Create a cheerful family-friendly editorial cartoon illustration for a Brain Booster Lab visual puzzle. "
-                + "Show a colorful mystery room with two friendly child detectives, a small helper robot, a desk, "
-                + "bookshelf, magnifying glass, notebook, lamp, and playful objects. "
-                + "Use clean bold outlines, bright blue, yellow, pink, cyan, and purple, with no words, letters, logos, "
-                + "or copyrighted characters. Leave enough open space for local video captions. "
-                + "Creative brief: " + (job.getPrompt() == null ? "Find a hidden object in the scene." : job.getPrompt());
+        String prompt = "Create a polished premium children's editorial illustration for a Brain Booster Lab visual puzzle. "
+                + "Use the visual quality of a high-end animated feature key frame: confident composition, crisp expressive linework, "
+                + "layered depth, cinematic soft lighting, tactile materials, rich but harmonious color, and clear focal hierarchy. "
+                + "Show a welcoming family-friendly mystery room with two distinct friendly detectives, a small helper robot, "
+                + "a desk, bookshelf, magnifying glass, notebook, lamp, and several believable props. "
+                + "The puzzle clue must be a single, clearly drawable object that is present exactly once and is subtly integrated "
+                + "into the scene so it is fair but not immediately obvious. Follow the PUZZLE and ANSWER fields below as ground truth. "
+                + "Do not add words, letters, logos, watermarks, UI, borders, or copyrighted characters. "
+                + "Keep the important action in the central safe area for a 16:9 video crop. "
+                + "Creative brief: " + (job.getPrompt() == null ? "Find one hidden object in the scene." : job.getPrompt())
+                + " Generated puzzle script: " + (job.getScriptText() == null ? "" : job.getScriptText());
         ImageGenerateParams params = ImageGenerateParams.builder()
                 .model(properties.model())
                 .prompt(prompt)
                 .size("1536x1024")
-                .quality(ImageGenerateParams.Quality.MEDIUM)
+                .quality(ImageGenerateParams.Quality.HIGH)
                 .n(1)
                 .build();
         ImagesResponse response = client.images().generate(params);

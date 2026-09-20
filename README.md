@@ -7,7 +7,7 @@ Local-first production system for family-friendly puzzle and detective videos.
 - Java 25 and Spring Boot application for orchestration and APIs
 - PostgreSQL in Docker Compose for durable workflow state
 - Flyway migrations for schema changes
-- FFmpeg plus Java2D for deterministic media assembly: title card, colorful puzzle board, countdown, answer reveal, and CTA
+- FFmpeg plus Java2D for deterministic media assembly: polished title card, cinematic puzzle board, countdown, answer reveal, and CTA
 - OpenAI API only for optional AI generation and scene artwork, configured later through environment variables
 - Future control and publishing adapters: WhatsApp and YouTube
 
@@ -41,7 +41,7 @@ List the approval queue with `GET /api/v1/content-jobs`, then approve a draft wi
 
 Generate a script with `POST /api/v1/content-jobs/{id}/generate`. Local development defaults to a deterministic mock generator. To use the OpenAI Responses API, set `GENERATION_MODE=live`, `OPENAI_MODEL`, and `OPENAI_API_KEY` in the environment. The key is read by the official Java client and is never persisted by the application.
 
-Artwork is independently configurable. The default `ARTWORK_MODE=mock` creates a local illustrated mystery-room scene with Java2D. Set `ARTWORK_MODE=live`, `OPENAI_IMAGE_MODEL`, and `OPENAI_API_KEY` to have the OpenAI Image API create the scene artwork. In both modes, the local renderer adds the deterministic hidden clue, countdown, reveal highlight, captions, and CTA before FFmpeg assembles the MP4.
+Artwork is independently configurable. The default `ARTWORK_MODE=mock` creates a local illustrated mystery-room scene with Java2D. Set `ARTWORK_MODE=live`, `OPENAI_IMAGE_MODEL`, and `OPENAI_API_KEY` to have the OpenAI Image API create a polished scene artwork. The live prompt asks for a single fair visual clue, cinematic lighting, expressive characters, and a composition that survives a 16:9 crop. The local renderer parses the generated sections, keeps the clue and answer consistent, adds the countdown, reveal treatment, captions, and CTA, then FFmpeg assembles the MP4.
 
 ### Local-only OpenAI artwork configuration
 
@@ -64,5 +64,5 @@ Jobs move through explicit states: `DRAFT`, `APPROVED`, `GENERATING`, `READY`, `
 ## Next build slices
 
 1. Optional narration, sound effects, and background music
-2. Richer puzzle templates and configurable video aspect ratios
+2. Richer puzzle templates, multi-puzzle episodes, and configurable video aspect ratios
 3. WhatsApp command adapter and YouTube publishing adapter

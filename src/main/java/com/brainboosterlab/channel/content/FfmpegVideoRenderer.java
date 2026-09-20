@@ -16,6 +16,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 
 import javax.imageio.ImageIO;
 
@@ -158,22 +159,22 @@ class FfmpegVideoRenderer implements VideoRenderer {
         drawDecorations(g);
         drawPill(g, "BRAIN BOOSTER LAB", 120, 100, 520, 64, YELLOW, NAVY);
         drawCentered(g, puzzle.title(), 960, 390, 86, Font.BOLD, CREAM, 1550);
-        drawCentered(g, puzzle.hook(), 960, 540, 42, Font.PLAIN, CREAM, 1500);
-        drawCentered(g, "GET READY • FIND THE HIDDEN STAR", 960, 760, 34, Font.BOLD, YELLOW, 1500);
+        drawWrappedCentered(g, puzzle.hook(), 960, 520, 42, Font.PLAIN, CREAM, 1500, 2);
+        drawCentered(g, "LOOK CLOSELY • SOLVE THE CLUE", 960, 760, 34, Font.BOLD, YELLOW, 1500);
         drawProgress(g, 0.08);
     }
 
     private void drawPuzzle(Graphics2D g, PuzzleText puzzle, BufferedImage artwork, int countdown, boolean reveal) {
         background(g, new GradientPaint(0, 0, new Color(27, 49, 105), WIDTH, HEIGHT, NAVY));
-        drawPill(g, reveal ? "ANSWER REVEAL" : "FIND THE HIDDEN STAR", 96, 68, 650, 64,
+        drawPill(g, reveal ? "ANSWER REVEAL" : "YOUR CHALLENGE", 96, 68, 650, 64,
                 reveal ? YELLOW : CYAN, NAVY);
-        drawCentered(g, reveal ? puzzle.answer() : puzzle.puzzle(), 830, 172, 32, Font.BOLD, CREAM, 1320);
+        drawWrappedCentered(g, reveal ? puzzle.answer() : puzzle.puzzle(), 830, 160, 32, Font.BOLD, CREAM, 1320, 2);
         drawArtworkScene(g, artwork, reveal);
         if (!reveal) {
             drawCountdown(g, countdown);
-            drawCentered(g, "Look closely — one detail is different!", 960, 1015, 30, Font.PLAIN, CREAM, 1500);
+            drawCentered(g, "Trust your eyes • the answer is in the scene", 960, 1015, 30, Font.PLAIN, CREAM, 1500);
         } else {
-            drawPill(g, "THE STAR WAS HIDING BY THE BOOKSHELF", 505, 910, 910, 68, YELLOW, NAVY);
+            drawPill(g, "CLUE FOUND • CHECK THE ANSWER ABOVE", 505, 910, 910, 68, YELLOW, NAVY);
             drawCentered(g, "Great eye! Ready for another Brain Booster?", 960, 1015, 30, Font.PLAIN, CREAM, 1500);
         }
     }
@@ -196,18 +197,10 @@ class FfmpegVideoRenderer implements VideoRenderer {
         g.setColor(new Color(8, 15, 38, 180));
         g.fillRoundRect(x - 14, y - 14, width + 28, height + 28, 38, 38);
         g.drawImage(artwork, x, y, width, height, null);
-
-        // The hidden clue is placed by the local compositor, so the answer location
-        // stays deterministic even when the background artwork comes from an AI model.
-        int starX = 1328;
-        int starY = 530;
         if (reveal) {
-            g.setColor(YELLOW);
-            g.setStroke(new BasicStroke(12));
-            g.drawOval(starX - 86, starY - 86, 172, 172);
-            drawStar(g, starX, starY, 46, YELLOW);
-        } else {
-            drawStar(g, starX, starY, 27, new Color(255, 211, 66, 200));
+            g.setColor(new Color(255, 211, 66, 90));
+            g.setStroke(new BasicStroke(8));
+            g.drawRoundRect(x - 2, y - 2, width + 4, height + 4, 24, 24);
         }
     }
 
@@ -265,6 +258,52 @@ class FfmpegVideoRenderer implements VideoRenderer {
         g.drawString(value, centerX - metrics.stringWidth(value) / 2, baseline);
     }
 
+    private void drawWrappedCentered(Graphics2D g, String text, int centerX, int centerY, int size, int style,
+                                     Color color, int maxWidth, int maxLines) {
+        Font font = new Font("SansSerif", style, size);
+        g.setFont(font);
+        FontMetrics metrics = g.getFontMetrics();
+        List<String> lines = new ArrayList<>();
+        StringBuilder line = new StringBuilder();
+        for (String word : cleanText(text).split("\\s+")) {
+            if (word.isBlank()) {
+                continue;
+            }
+            String candidate = line.isEmpty() ? word : line + " " + word;
+            if (!line.isEmpty() && metrics.stringWidth(candidate) > maxWidth) {
+                lines.add(line.toString());
+                line = new StringBuilder(word);
+            } else {
+                line = new StringBuilder(candidate);
+            }
+        }
+        if (!line.isEmpty()) {
+            lines.add(line.toString());
+        }
+        if (lines.isEmpty()) {
+            lines.add("Brain Booster Lab");
+        }
+        if (lines.size() > maxLines) {
+            lines = new ArrayList<>(lines.subList(0, maxLines));
+            String last = lines.get(maxLines - 1);
+            while (metrics.stringWidth(last + "…") > maxWidth && last.length() > 8) {
+                last = last.substring(0, last.length() - 1);
+            }
+            lines.set(maxLines - 1, last + "…");
+        }
+        int lineHeight = size + 10;
+        int firstBaseline = centerY - ((lines.size() - 1) * lineHeight) / 2;
+        g.setColor(color);
+        for (int index = 0; index < lines.size(); index++) {
+            String value = lines.get(index);
+            g.drawString(value, centerX - metrics.stringWidth(value) / 2, firstBaseline + index * lineHeight);
+        }
+    }
+
+    private static String cleanText(String text) {
+        return text == null ? "" : text.replaceAll("[*_`#]", "").replaceAll("\\s+", " ").trim();
+    }
+
     private void drawStar(Graphics2D g, int centerX, int centerY, int radius, Color color) {
         Path2D star = new Path2D.Double();
         for (int i = 0; i < 10; i++) {
@@ -308,7 +347,7 @@ class FfmpegVideoRenderer implements VideoRenderer {
         void paint(Graphics2D graphics);
     }
 
-    private record PuzzleText(String title, String hook, String puzzle, String answer, String cta) {
+    static record PuzzleText(String title, String hook, String puzzle, String answer, String cta) {
         static PuzzleText from(ContentJob job) {
             String script = job.getScriptText();
             return new PuzzleText(
@@ -324,12 +363,41 @@ class FfmpegVideoRenderer implements VideoRenderer {
             if (script == null || script.isBlank()) {
                 return fallback;
             }
-            return script.lines()
-                    .filter(line -> line.startsWith(key + ":"))
-                    .map(line -> line.substring(key.length() + 1).trim())
-                    .findFirst()
-                    .filter(value -> !value.isBlank())
-                    .orElse(fallback);
+            StringBuilder result = new StringBuilder();
+            boolean capturing = false;
+            for (String rawLine : script.lines().toList()) {
+                String line = cleanText(rawLine);
+                String section = sectionName(line);
+                if (section != null) {
+                    if (capturing) {
+                        break;
+                    }
+                    if (section.equals(key)) {
+                        capturing = true;
+                        String remainder = line.substring(key.length()).replaceFirst("^[\\s:–—-]+", "").trim();
+                        if (!remainder.isBlank()) {
+                            result.append(remainder);
+                        }
+                    }
+                } else if (capturing && !line.isBlank()) {
+                    if (result.length() > 0) {
+                        result.append(' ');
+                    }
+                    result.append(line);
+                }
+            }
+            return result.length() == 0 ? fallback : result.toString();
+        }
+
+        private static String sectionName(String line) {
+            String upper = line.toUpperCase(Locale.ROOT);
+            for (String key : List.of("TITLE", "HOOK", "PUZZLE", "PAUSE", "ANSWER", "CTA")) {
+                if (upper.equals(key) || upper.startsWith(key + ":") || upper.startsWith(key + " ")
+                        || upper.startsWith(key + "-") || upper.startsWith(key + "–")) {
+                    return key;
+                }
+            }
+            return null;
         }
     }
 }

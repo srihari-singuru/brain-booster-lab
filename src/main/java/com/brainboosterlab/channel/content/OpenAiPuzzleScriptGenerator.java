@@ -24,11 +24,15 @@ class OpenAiPuzzleScriptGenerator implements PuzzleScriptGenerator {
 
     @Override
     public GeneratedScript generate(ContentJob job) {
-        String input = "Create a family-friendly Brain Booster Lab puzzle video script.\n"
+        String input = "Create a premium family-friendly Brain Booster Lab visual puzzle script.\n"
                 + "Title: " + job.getTitle() + "\n"
                 + "Creative brief: " + (job.getPrompt() == null ? "Use a visual detective riddle." : job.getPrompt()) + "\n"
-                + "Use this exact structure: TITLE, HOOK, PUZZLE, PAUSE, ANSWER, CTA."
-                + " Avoid violence, frightening imagery, and copyrighted characters.";
+                + "Use this exact plain-text structure, with one field per line and no markdown: TITLE:, HOOK:, PUZZLE:, PAUSE:, ANSWER:, CTA:.\n"
+                + "Design one fair visual challenge that can be solved from the artwork in five seconds."
+                + " The PUZZLE must name one concrete clue object and where to look."
+                + " The ANSWER must describe that same object and exact location, with no new object or location."
+                + " Keep every field concise, exciting, and easy to read on a phone."
+                + " Avoid violence, frightening imagery, impossible trick questions, copyrighted characters, and claims such as '99% fail'.";
         ResponseCreateParams params = ResponseCreateParams.builder()
                 .model(model)
                 .input(input)
