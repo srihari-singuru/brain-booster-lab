@@ -1,3 +1,5 @@
+name: referenced-chatgpt-conversation-this-is-an
+
 services:
   postgres:
     image: postgres:17-alpine
