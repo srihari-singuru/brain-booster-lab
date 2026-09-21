@@ -73,6 +73,16 @@ class StudioService {
     List<View> list() { return repository.findAllByOrderByCreatedAtDesc().stream().map(this::view).toList(); }
     View get(UUID id) { return view(find(id)); }
 
+    /** The brief remains editable only until its first generated script makes it an auditable production record. */
+    synchronized View updateBrief(UUID id, String brief) {
+        EpisodeSpec.require(brief != null && !brief.isBlank() && brief.length() <= 4000, "Brief must be 1–4000 characters");
+        var episode = find(id);
+        require(episode.specJson == null, "This episode already has a puzzle script. Start a new episode to use a different prompt.");
+        episode.brief = brief.trim();
+        save(episode);
+        return view(episode);
+    }
+
     synchronized View settings(UUID id, EpisodeSettings requestedSettings) {
         requestedSettings.validate();
         var episode = find(id);
