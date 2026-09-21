@@ -247,9 +247,10 @@ class StudioService {
         try {
             var production = settings(e);
             String direction = stageInstructions(e).forAction("generate");
-            var draft = direction.isBlank()
+            String recentPuzzleTitles = recentPuzzleTitles(e.id);
+            var draft = direction.isBlank() && recentPuzzleTitles.isBlank()
                 ? (production.equals(defaults) ? ai.generate(e.brief) : ai.generate(e.brief, production.puzzleCount(), production.textModel()))
-                : ai.generate(e.brief, production.puzzleCount(), production.textModel(), direction);
+                : ai.generate(e.brief, production.puzzleCount(), production.textModel(), direction, recentPuzzleTitles);
             e.specJson = json.writeValueAsString(draft.spec());
             e.scriptModel = draft.model(); e.responseId = draft.responseId();
             // Each production step is an explicit user decision. Preserve the generated script
@@ -573,6 +574,29 @@ class StudioService {
                 episode.narrationGroundingModel, episode.speechModel, episode.speechVoice, savedSettings, StageInstructions.EMPTY, episode.approvedAt,
                 false, List.of(), false, false, false);
         }
+    }
+
+    /** A small no-repeat memory: only local titles, never earlier questions, answers, artwork, or narration. */
+    private String recentPuzzleTitles(UUID currentEpisodeId) {
+        List<StudioEpisode> episodes = repository.findAllByOrderByCreatedAtDesc();
+        if (episodes == null || episodes.isEmpty()) return "";
+        StringBuilder titles = new StringBuilder();
+        int count = 0;
+        for (StudioEpisode prior : episodes) {
+            if (count >= 80 || prior.id.equals(currentEpisodeId) || prior.specJson == null) continue;
+            try {
+                EpisodeSpec archived = json.readValue(prior.specJson, EpisodeSpec.class);
+                for (EpisodeSpec.Puzzle puzzle : archived.puzzles()) {
+                    String title = puzzle.title().trim();
+                    if (title.isBlank() || count >= 80 || titles.length() + title.length() + 3 > 5000) continue;
+                    titles.append("- ").append(title).append('\n');
+                    count++;
+                }
+            } catch (Exception ignored) {
+                // A legacy/corrupt record must never block a fresh local generation.
+            }
+        }
+        return titles.toString();
     }
     private static void require(boolean condition, String message) {
         if (!condition) throw new ResponseStatusException(HttpStatus.CONFLICT, message);

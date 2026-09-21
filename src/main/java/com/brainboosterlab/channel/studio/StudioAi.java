@@ -79,6 +79,11 @@ class StudioAi {
     }
 
     Draft generate(String brief, int puzzleCount, String requestedModel, String operatorDirection) {
+        return generate(brief, puzzleCount, requestedModel, operatorDirection, "");
+    }
+
+    /** Recent local titles make novelty an informed constraint without exporting puzzle details. */
+    Draft generate(String brief, int puzzleCount, String requestedModel, String operatorDirection, String recentPuzzleTitles) {
         EpisodeSpec.require(puzzleCount >= 1 && puzzleCount <= 10, "Choose between 1 and 10 puzzles");
         String activeModel = requestedModel == null || requestedModel.isBlank() ? model : requestedModel.trim();
         if (!"live".equals(generationMode)) return new Draft(PilotFixtures.kids(), "local-fixture", "none");
@@ -134,7 +139,7 @@ class StudioAi {
             neon skin, plastic 3D rendering or visual noise. Do not copy channel characters or designs.
             thinkSeconds10–15.
             Original creative brief follows:
-            """.formatted(puzzleCount) + brief + operatorSuffix(operatorDirection);
+            """.formatted(puzzleCount) + brief + recentTitleSuffix(recentPuzzleTitles) + operatorSuffix(operatorDirection);
         var response = client.responses().create(ResponseCreateParams.builder().model(activeModel).input(prompt)
             .store(false).reasoning(Reasoning.builder().effort(ReasoningEffort.HIGH).build())
             .maxOutputTokens(12000).text(EpisodeSpec.class).build());
@@ -331,5 +336,10 @@ class StudioAi {
 
     private static String operatorSuffix(String direction) {
         return direction == null || direction.isBlank() ? "" : "\n\nOperator direction for this stage (honor it unless it conflicts with safety or required output format):\n" + direction.trim();
+    }
+    private static String recentTitleSuffix(String titles) {
+        return titles == null || titles.isBlank() ? "" : "\n\nRECENT PUZZLE TITLES — HARD NO-REPEAT LIST:\n"
+            + "Do not repeat or lightly rephrase a title below. Make the premise, setting, clue mechanism, question shape, and reveal logic genuinely different from this recent collection.\n"
+            + titles.trim();
     }
 }
