@@ -23,6 +23,8 @@ class SpeechAi {
     record Draft(EpisodeSpeech speech) {}
     private static final Set<String> VOICES = Set.of("alloy", "ash", "ballad", "coral", "echo", "fable",
         "nova", "onyx", "sage", "shimmer", "verse", "marin", "cedar");
+    // The Speech API exposes speed numerically; pitch is intentionally guided in the delivery instructions.
+    private static final double QUESTION_SPEED = 1.05, TIMER_CUE_SPEED = 1.00, REVEAL_SPEED = 1.05;
     private final String mode;
     private final String model;
     private final String voice;
@@ -49,9 +51,9 @@ class SpeechAi {
         List<EpisodeSpeech.PuzzleSpeech> tracks = new ArrayList<>();
         for (int i = 0; i < spec.puzzles().size(); i++) {
             EpisodeNarration.PuzzleNarration beat = narration.puzzles().get(i);
-            double question = synthesize(beat.questionLeadIn(), directory.resolve("speech-question-" + i + ".wav"), questionDirection());
-            double timer = synthesize(beat.timerCue(), directory.resolve("speech-timer-" + i + ".wav"), timerDirection());
-            double reveal = synthesize(beat.revealExplanation(), directory.resolve("speech-reveal-" + i + ".wav"), revealDirection());
+            double question = synthesize(beat.questionLeadIn(), directory.resolve("speech-question-" + i + ".wav"), questionDirection(), QUESTION_SPEED);
+            double timer = synthesize(beat.timerCue(), directory.resolve("speech-timer-" + i + ".wav"), timerDirection(), TIMER_CUE_SPEED);
+            double reveal = synthesize(beat.revealExplanation(), directory.resolve("speech-reveal-" + i + ".wav"), revealDirection(), REVEAL_SPEED);
             tracks.add(new EpisodeSpeech.PuzzleSpeech(i + 1, question, timer, reveal));
         }
         EpisodeSpeech speech = new EpisodeSpeech(model, voice, tracks);
@@ -74,10 +76,10 @@ class SpeechAi {
         return new Draft(speech);
     }
 
-    private double synthesize(String input, Path target, String instructions) throws Exception {
+    private double synthesize(String input, Path target, String instructions, double speed) throws Exception {
         Path pending = target.resolveSibling(target.getFileName() + ".pending");
         try (HttpResponse response = client.audio().speech().create(SpeechCreateParams.builder()
-                .model(model).voice(voice).input(input).instructions(instructions)
+                .model(model).voice(voice).input(input).instructions(instructions).speed(speed)
                 .responseFormat(SpeechCreateParams.ResponseFormat.WAV).build())) {
             Files.copy(response.body(), pending, StandardCopyOption.REPLACE_EXISTING);
         }
@@ -126,12 +128,12 @@ class SpeechAi {
     }
 
     private static String questionDirection() {
-        return "Bright, energetic adult male storyteller for children ages 6 to 10. Sound delighted, playful and naturally animated, with clear English and a slightly quicker, lively pace. Lift the exciting words and questions, smile in the delivery, and make every discovery feel fun. Never sound flat, sleepy, robotic, like a baby voice, or like a frantic game-show host. Be confidently audible without shouting. Speak exactly the supplied words and do not add a greeting.";
+        return "Bright, energetic adult male storyteller for children ages 6 to 10. Sound delighted, playful and naturally animated, with clear English, a natural medium-low pitch, and a slightly quicker, lively pace. Lift the exciting words and questions, smile in the delivery, and make every discovery feel fun. Never sound flat, sleepy, robotic, like a baby voice, or like a frantic game-show host. Be confidently audible without shouting. Speak exactly the supplied words and do not add a greeting.";
     }
     private static String timerDirection() {
-        return "Energetic adult male timer cue for children. Deliver the line with a bright, exciting launch and crisp, clear words. Say it exactly once; do not count, add sound effects, or add extra words.";
+        return "Energetic adult male timer cue for children. Deliver the line with a bright, exciting launch, a natural medium-low pitch, and crisp, clear words. Say it exactly once; do not count, add sound effects, or add extra words.";
     }
     private static String revealDirection() {
-        return "Bright, expressive adult male storyteller for children ages 6 to 10. Make the answer feel like a cheerful aha moment: warmly celebrate the discovery, then clearly explain the proof. Natural English, lively emphasis, no baby talk, no flat delivery, and no exaggerated game-show shouting. Speak exactly the supplied words.";
+        return "Bright, expressive adult male storyteller for children ages 6 to 10. Make the answer feel like a cheerful aha moment: warmly celebrate the discovery, then clearly explain the proof. Natural English, a natural medium-low pitch, and lively emphasis, no baby talk, no flat delivery, and no exaggerated game-show shouting. Speak exactly the supplied words.";
     }
 }
