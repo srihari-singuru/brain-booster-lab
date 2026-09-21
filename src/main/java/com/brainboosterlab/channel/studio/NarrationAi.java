@@ -8,6 +8,7 @@ import com.openai.models.responses.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Value;
@@ -57,6 +58,26 @@ class NarrationAi {
     Draft write(EpisodeSpec spec, String requestedModel, String operatorDirection) {
         String activeModel = requestedModel == null || requestedModel.isBlank() ? model : requestedModel.trim();
         if (!"live".equals(mode)) return new Draft(fixture(spec), "local-fixture", "none");
+        // Large strict narration objects have the same latency risk as large puzzle
+        // objects. Batch only long episodes; short episodes retain one coherent pass.
+        if (spec.puzzles().size() >= 4) {
+            var beats = new ArrayList<EpisodeNarration.PuzzleNarration>();
+            EpisodeNarration first = null;
+            EpisodeNarration last = null;
+            String lastResponseId = "";
+            for (int i = 0; i < spec.puzzles().size(); i++) {
+                EpisodeSpec onePuzzle = new EpisodeSpec(spec.title(), List.of(spec.puzzles().get(i)));
+                Draft one = write(onePuzzle, activeModel, operatorDirection);
+                EpisodeNarration.PuzzleNarration beat = one.narration().puzzles().getFirst();
+                beats.add(new EpisodeNarration.PuzzleNarration(i + 1, beat.questionLeadIn(), beat.timerCue(), beat.revealExplanation()));
+                if (first == null) first = one.narration();
+                last = one.narration();
+                lastResponseId = one.responseId();
+            }
+            EpisodeNarration combined = new EpisodeNarration(first.episodeOpening(), List.copyOf(beats), last.episodeClosing());
+            combined.validate(spec);
+            return new Draft(combined, activeModel, lastResponseId);
+        }
         String prompt = """
             You are the senior story writer for Brain Booster Lab, an energetic family visual-challenge channel for
             children ages 6–18 solving alongside parents. Write natural spoken narration for the supplied episode
@@ -70,6 +91,12 @@ class NarrationAi {
             'only geniuses', shame, panic, or repeated 'are you ready'. Do not say 'find something', 'look closely',
             or promise that the viewer can see an unclear clue. Address viewers warmly, inclusively, and with genuine
             excitement rather than pressure.
+
+            SIMPLE SPOKEN ENGLISH IS REQUIRED. Write for a child aged seven to understand on the first
+            listen, while still sounding fun for teens and parents. Use familiar everyday words, short
+            sentences, and clear action words. Avoid formal words, metaphors, idioms, long descriptions,
+            or puzzle words such as "deduce", "candidate", "evidence", "mechanism", or "conclusion".
+            The picture supplies the challenge; the voice must make the story easy to follow.
 
             Structure rules:
             - episodeOpening: one fresh welcome, 4–28 words. It will be used in a future opening, not today’s video.
@@ -117,8 +144,9 @@ class NarrationAi {
             correct option, character/name, answer letter, decisive visual clue, or explanation. storyFitsPuzzle is
             true only when the narration uses no invented evidence and the reveal correctly names the right answer and
             its exact proof, identifying the answer only as the supplied OPTION letter (A through E). It must reject any use of a choice name or label. timeFits is true only when lead-in is 20–25 words, timer cue 5–7 and explicitly says eight seconds, and reveal 18–23.
-            familySafe is true only for warm, age-appropriate language with no pressure, shame, fear, stereotypes or
-            unsafe claims. Be adversarial: reject generic filler, babyish delivery, classroom-like explanation, and ambiguous proof. Put concise actionable feedback
+            familySafe is true only for warm, age-appropriate, simple language with no pressure, shame, fear, stereotypes or
+            unsafe claims. A seven-year-old must understand every line on one listen; reject formal vocabulary, idioms, metaphors,
+            or long tangled sentences. Be adversarial: reject generic filler, babyish delivery, classroom-like explanation, and ambiguous proof. Put concise actionable feedback
             in notes. Do not rubber-stamp.
             Specification: """ + json.writeValueAsString(spec) + "\nNarration: " + json.writeValueAsString(narration) + operatorSuffix(operatorDirection);
         var response = client.responses().create(ResponseCreateParams.builder().model(activeModel).input(prompt)

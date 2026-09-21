@@ -177,6 +177,12 @@ class StudioAi {
             palette, luminous key light, strong color separation between subjects, crisp silhouettes,
             and a clean focal clue. The result should feel energetic at small phone size without
             neon skin, plastic 3D rendering or visual noise. Do not copy channel characters or designs.
+            SIMPLE ENGLISH IS REQUIRED FOR EVERY VIEWER-FACING FIELD: title, setup, question, facts,
+            choice label, choice statement, and explanation. Write for a seven-year-old hearing it once.
+            Use short familiar words, concrete actions, and short sentences. Prefer "Which child pulled
+            the sled?" over "Who transported the sled?" Avoid uncommon words, abstract terms, idioms,
+            long noun phrases, and clever wording that changes the meaning. The puzzle can be medium
+            difficulty because of the picture clue, never because the English is difficult.
             thinkSeconds: 8–15; use 8 for every visual puzzle.
             Original creative brief follows:
             """.formatted(puzzleCount, recovery ? "750" : (puzzleCount >= 4 ? "900" : "1200")) + brief + recentTitleSuffix(recentPuzzleTitles)
@@ -256,6 +262,7 @@ class StudioAi {
             + "Reject ambiguity, unstated necessary facts, harmful stereotypes, claims that lying proves guilt, arithmetic, number patterns, "
             + "time calculations, truth tables, long alibis, schoolwork, and tiny object hunts. Verify every puzzle has 3–5 consecutive supplied "
             + "OPTION letters, equally plausible candidates, and a correct answer proven by the planned picture rather than expression, appearance, or category difference. "
+            + "Also reject a puzzle whose question, setup, choices, or reveal needs advanced English: a seven-year-old must understand the words on first read. "
             + "Audit the complete collection for variety: reject an episode if its puzzles repeat a setting, premise, visual mechanism, clue type, "
             + "question shape, or reveal logic, or if it falls back on stock robot/cardboard, winding-key, missing-shadow, reflection, or disguised-ghost patterns without an explicit brief reason. "
             + "Friendly monsters and fantasy are welcome only when age-appropriate and supported by an explicit fictional rule where needed. "
