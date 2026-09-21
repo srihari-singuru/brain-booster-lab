@@ -36,14 +36,17 @@ class StudioAi {
         }
     }
     public record VisualReview(boolean acceptable, String notes) {}
+    /** Checks conformance to the scene plan before the independent blind solver sees the delivered frame. */
+    public record ArtworkConformance(boolean acceptable, String repairBrief, String notes) {}
     /** A clue rectangle returned relative to the full final 1920×1080 question frame. */
     public record ClueLocation(double x, double y, double width, double height, String notes) {
         SceneOverlay.Region onArtwork() {
-            // The complete 16:9 artwork is rendered inside this fixed safe scene area.
-            double left = (x * 1920 - 160) / 1600;
-            double top = (y * 1080 - 156) / 900;
-            double wide = width * 1920 / 1600;
-            double high = height * 1080 / 900;
+            // The complete 16:9 artwork is rendered in this fixed, unobscured scene area.
+            var stage = KidsFrameRenderer.ART_STAGE;
+            double left = (x * StudioRenderer.WIDTH - stage.x) / stage.width;
+            double top = (y * StudioRenderer.HEIGHT - stage.y) / stage.height;
+            double wide = width * StudioRenderer.WIDTH / stage.width;
+            double high = height * StudioRenderer.HEIGHT / stage.height;
             if (!Double.isFinite(left + top + wide + high)) throw new IllegalArgumentException("Clue location is not finite");
             wide = Math.max(.06, Math.min(.55, wide)); high = Math.max(.06, Math.min(.55, high));
             left = Math.max(.01, Math.min(.99 - wide, left)); top = Math.max(.01, Math.min(.99 - high, top));
@@ -285,6 +288,19 @@ class StudioAi {
     }
 
     void artwork(EpisodeSpec.Puzzle puzzle, Path directory, int index, String requestedImageModel, String operatorDirection) throws Exception {
+        artwork(puzzle, directory, index, requestedImageModel, operatorDirection, false);
+    }
+
+    /** One bounded repair pass prevents a first image mismatch from becoming a manual dead end. */
+    void repairArtwork(EpisodeSpec.Puzzle puzzle, Path directory, int index, String requestedImageModel,
+                       String operatorDirection, String repairBrief) throws Exception {
+        String repair = "\n\nREPAIR PASS — correct only the failed visual details below while keeping the canonical scene plan authoritative. "
+            + "Do not add text, labels, arrows, circles, or extra candidates.\n" + repairBrief;
+        artwork(puzzle, directory, index, requestedImageModel, operatorDirection + repair, true);
+    }
+
+    private void artwork(EpisodeSpec.Puzzle puzzle, Path directory, int index, String requestedImageModel,
+                         String operatorDirection, boolean replaceExisting) throws Exception {
         String activeImageModel = requestedImageModel == null || requestedImageModel.isBlank() ? imageModel : requestedImageModel.trim();
         String prompt = """
             Create one premium 16:9 landscape editorial illustration for an original family reasoning show.
@@ -296,10 +312,9 @@ class StudioAi {
             never muddy, gray, pastel-washed or neon skin.
             Audience: families and curious adults, not preschool. No 3D plastic, clip-art, chibi characters,
             decorative puzzle shapes, airbrushed stock art or exaggerated guilty expressions.
-            Compose as a wide establishing frame, fill the canvas with the actual scene. Put important
-            heads and objects in the middle vertical band (35–75% of canvas height), not on the edges.
-            Top 28% and bottom 22% are background scenery reserved for application text overlays.
-            Confident readable silhouettes; medium-wide camera framing, no extreme face closeups.
+            Compose as a wide establishing frame that fills the canvas with the actual scene. Keep every
+            candidate, their hands, feet, and decisive evidence inside a generous central safe area: no cropped
+            heads, feet, shadows, reflections, or proof objects. Use a medium-wide camera, not close-ups.
             Leave lettering to the application: NO text, numbers, labels, speech bubbles, titles, border,
             logo or watermark anywhere. No answer highlights. Do not show concealed contents.
             Exact scene brief:
@@ -309,22 +324,27 @@ class StudioAi {
             and parents. Keep the polished 2D mystery-comic style: natural anatomy, refined ink contours, rich teal,
             warm amber and coral, atmospheric light, engaging characters, and detailed but calm scenery. It must feel
             vibrant and intelligent, never preschool, babyish, gloomy, generic, or like stock clip-art.
-            Exactly the three-to-five candidate subjects specified in the scene plan, arranged left-to-right in
-            matching OPTION order. No other candidate-like people.
-            Full bodies and any floor/shadow evidence fully inside the image. No cropping of clues.
-            Do not reserve large text panels: the app puts a short question and OPTION badges outside the art.
-            Evidence has to be genuinely visible and coherent, not simply described in a prompt.
+            This is a pure, unlabelled scene placed inside a separate application frame. Exactly the three-to-five
+            candidate subjects specified in the scene plan must appear left-to-right in matching OPTION order.
+            Treat each candidate as an equal-width lane with clear space between lanes; no other candidate-like
+            people, mannequins, portraits, or background figures that could be mistaken for an option. Show all
+            full bodies and any floor/shadow/reflection evidence completely inside the canvas. The important proof
+            must be large, sharp, physically coherent, and visible at phone size—not hidden, covered, cropped,
+            implied, or merely described in the prompt. Every non-answer candidate needs the ordinary counterpart
+            that makes the one anomaly fair to compare.
             One clear visual clue, medium challenge for family viewers ages 6–18, readable at phone size. Every other
             candidate must clearly lack that anomaly. The clue should reward comparison and a second look, not be an
             instant giveaway or a tiny hunt. Preserve equally plausible expressions so faces do not give the answer
             away. Friendly make-believe, including harmless monsters or fantasy, is welcome; never scary. No text, labels, numbers, logos,
             watermarks, arrows, rings or answer highlights. No plastic 3D or preschool clip-art.
-            The following scene plan is authoritative, especially its stated physical evidence:
+            The following scene plan is authoritative, especially its stated physical evidence and candidate order:
             """ + puzzle.sceneDescription();
         prompt += "\nFinal lettering constraint: do NOT draw OPTION badges or any text, even if the scene brief mentions them. The application alone adds those labels."
             + operatorSuffix(operatorDirection);
         Path artwork = directory.resolve("art-" + index + ".png");
-        if (Files.exists(artwork)) return; // Paid output is immutable and reused on retries/renders.
+        if (Files.exists(artwork) && !replaceExisting) return; // Saved successful output is reused on regular retries.
+        if (replaceExisting && Files.exists(artwork))
+            Files.copy(artwork, directory.resolve("art-" + index + "-attempt-1-rejected.png"), StandardCopyOption.REPLACE_EXISTING);
         if (!"live".equals(artworkMode)) {
             var placeholder = new BufferedImage(1536, 864, BufferedImage.TYPE_INT_RGB);
             var g = placeholder.createGraphics();
@@ -334,7 +354,7 @@ class StudioAi {
             ImageIO.write(placeholder, "png", artwork.toFile());
         } else {
             var result = client.images().generate(ImageGenerateParams.builder().model(activeImageModel)
-                .prompt(prompt).size("1536x864").quality(ImageGenerateParams.Quality.HIGH).n(1).build());
+                .prompt(prompt).size("1536x864").quality(imageQuality(activeImageModel)).n(1).build());
             var generated = result.data().flatMap(d -> d.stream().findFirst()).orElseThrow();
             byte[] bytes = Base64.getDecoder().decode(generated.b64Json()
                 .orElseThrow(() -> new IllegalStateException("Image response omitted base64 artwork; no asset saved")));
@@ -345,8 +365,44 @@ class StudioAi {
             Files.move(pending, artwork, StandardCopyOption.ATOMIC_MOVE);
         }
         Files.writeString(directory.resolve("provenance-" + index + ".json"), json.writeValueAsString(
-            new Provenance("live".equals(artworkMode) ? activeImageModel : "offline-placeholder", "1536x864", "high",
+            new Provenance("live".equals(artworkMode) ? activeImageModel : "offline-placeholder", "1536x864", imageQuality(activeImageModel).asString(),
                 Instant.now(), prompt, !"live".equals(artworkMode))));
+    }
+
+    private static ImageGenerateParams.Quality imageQuality(String model) {
+        // Maximum fidelity is reserved for the current premium 2.5 models. Older image
+        // models retain their portable high-quality setting rather than receiving an
+        // unsupported parameter.
+        return model != null && model.startsWith("gpt-image-2.5-")
+            ? ImageGenerateParams.Quality.MAX : ImageGenerateParams.Quality.HIGH;
+    }
+
+    ArtworkConformance reviewArtwork(Path artwork, EpisodeSpec.Puzzle puzzle, String requestedModel) throws Exception {
+        String activeModel = requestedModel == null || requestedModel.isBlank() ? model : requestedModel.trim();
+        if (!"live".equals(generationMode)) return new ArtworkConformance(true, "", "Offline mode: no AI conformance check.");
+        String prompt = """
+            Act as a strict production art director. Compare this raw, unlabelled 16:9 puzzle illustration to the
+            canonical scene plan below. This is a CONFORMANCE check, not the final blind puzzle solve.
+            Accept only if: exactly the required 3–5 candidates are present in the required left-to-right order;
+            no confusing extra candidate-like figures exist; all candidates and proof objects are fully visible;
+            the stated physical clue is visibly real, readable at phone size, and unique to the intended candidate;
+            the remaining candidates visibly show the ordinary counterpart; anatomy, lighting, shadows and
+            reflections are coherent; and there is no generated text, badge, logo, arrow, answer marker, or watermark.
+            If any condition fails, set acceptable=false and provide a short, concrete repairBrief describing only
+            the visual correction needed. Never invent a different puzzle or relax the canonical scene plan.
+            Canonical puzzle definition:
+            """ + json.writeValueAsString(puzzle);
+        var input = EasyInputMessage.builder().role(EasyInputMessage.Role.USER)
+            .contentOfResponseInputMessageContentList(List.of(
+                ResponseInputContent.ofInputText(ResponseInputText.builder().text(prompt).build()),
+                ResponseInputContent.ofInputImage(ResponseInputImage.builder().detail(ResponseInputImage.Detail.HIGH)
+                    .imageUrl("data:image/png;base64," + Base64.getEncoder().encodeToString(Files.readAllBytes(artwork))).build())))
+            .build();
+        var response = client.responses().create(ResponseCreateParams.builder().model(activeModel)
+            .inputOfResponse(List.of(ResponseInputItem.ofEasyInputMessage(input))).store(false)
+            .maxOutputTokens(1800).text(ArtworkConformance.class).build());
+        return response.output().stream().flatMap(i -> i.message().stream()).flatMap(m -> m.content().stream())
+            .flatMap(c -> c.outputText().stream()).findFirst().orElseThrow();
     }
 
     VisualReview reviewFrame(Path frame, EpisodeSpec.Puzzle puzzle) throws Exception {

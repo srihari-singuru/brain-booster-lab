@@ -14,7 +14,7 @@ import org.springframework.stereotype.Component;
 class StudioRenderer {
     static final String LAYOUT_VERSION = "reasoning-2";
     static String layoutVersion(EpisodeSpec spec) {
-        return spec.puzzles().stream().anyMatch(p -> "visual".equals(p.kind())) ? "kids-thumbnail-8" : LAYOUT_VERSION;
+        return spec.puzzles().stream().anyMatch(p -> "visual".equals(p.kind())) ? "kids-thumbnail-9" : LAYOUT_VERSION;
     }
     static final int WIDTH = 1920, HEIGHT = 1080;
     /** Temporary speech slots; narration later replaces these exact durations. */

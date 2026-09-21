@@ -420,9 +420,24 @@ class StudioService {
             Path dir = directory(id); Files.createDirectories(dir);
             var production = settings(e);
             for (int i = 0; i < spec.puzzles().size(); i++) {
-                // Retrying a clue-analysis failure preserves the already purchased local artwork.
+                // A creator click authorizes one image request per puzzle. If the local
+                // conformance check finds a concrete mismatch, make at most one targeted
+                // repair request immediately rather than forcing the creator into a dead end.
                 if (!Files.isRegularFile(dir.resolve("art-" + i + ".png"))) {
-                    ai.artwork(spec.puzzles().get(i), dir, i, production.imageModel(), stageInstructions(e).forAction("artwork"));
+                    var puzzle = spec.puzzles().get(i);
+                    ai.artwork(puzzle, dir, i, production.imageModel(), stageInstructions(e).forAction("artwork"));
+                    var conformance = production.equals(defaults)
+                        ? ai.reviewArtwork(dir.resolve("art-" + i + ".png"), puzzle, null)
+                        : ai.reviewArtwork(dir.resolve("art-" + i + ".png"), puzzle, production.textModel());
+                    if (conformance == null) throw new IllegalStateException("Artwork conformance check returned no result");
+                    if (!conformance.acceptable()) {
+                        ai.repairArtwork(puzzle, dir, i, production.imageModel(), stageInstructions(e).forAction("artwork"), conformance.repairBrief());
+                        conformance = production.equals(defaults)
+                            ? ai.reviewArtwork(dir.resolve("art-" + i + ".png"), puzzle, null)
+                            : ai.reviewArtwork(dir.resolve("art-" + i + ".png"), puzzle, production.textModel());
+                        if (conformance == null) throw new IllegalStateException("Artwork repair check returned no result");
+                    }
+                    Files.writeString(dir.resolve("artwork-conformance-" + i + ".json"), json.writeValueAsString(conformance));
                 }
             }
             renderer.previews(spec, dir, production.channelName());

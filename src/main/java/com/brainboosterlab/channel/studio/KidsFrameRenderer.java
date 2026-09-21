@@ -13,8 +13,15 @@ final class KidsFrameRenderer {
     private static final Color CORRECT = new Color(113, 244, 153);
     private static final String DISPLAY_FONT = "Arial Black";
     private static final String BADGE_FONT = "Arial Rounded MT Bold";
-    static final int IMAGE_TOP = 156;
-    static final Rectangle ART_STAGE = new Rectangle(160, IMAGE_TOP, 1600, 900);
+    /*
+     * The illustration is deliberately a complete 16:9 window.  Option controls live
+     * below it, not on top of faces, props, shadows, or the decisive clue.  This is
+     * more than a visual preference: it gives the image checker the same unobscured
+     * evidence a viewer sees.
+     */
+    static final Rectangle ART_STAGE = new Rectangle(320, 152, 1280, 720);
+    private static final Rectangle ART_PANEL = new Rectangle(300, 136, 1320, 752);
+    private static final Rectangle OPTION_STRIP = new Rectangle(220, 906, 1480, 126);
 
     static Rectangle artBox(int width, int height) {
         // Keep the complete scene visible in its 16:9 stage rather than cropping puzzle evidence.
@@ -29,8 +36,9 @@ final class KidsFrameRenderer {
 
     static Rectangle badgeBox(int index, int count, Rectangle imageBox) {
         int centerX = imageBox.x + (2 * index + 1) * imageBox.width / (2 * count);
-        int y = imageBox.y + (int) (imageBox.height * .73);
-        return new Rectangle(centerX - 46, y, 92, 92);
+        int gap = 16;
+        int width = Math.min(270, (OPTION_STRIP.width - gap * (count - 1)) / count);
+        return new Rectangle(centerX - width / 2, OPTION_STRIP.y, width, OPTION_STRIP.height);
     }
 
     static BufferedImage frame(EpisodeSpec.Puzzle p, BufferedImage art, int index, String phase, int countdown, boolean draft) {
@@ -54,14 +62,14 @@ final class KidsFrameRenderer {
             drawBoard(g, art, reveal, revealTime);
             var stage = artBox(art.getWidth(), art.getHeight());
             var fit = ImageLayout.contain(art.getWidth(), art.getHeight(), stage);
-            g.setColor(new Color(8, 31, 70, 120)); g.fillRoundRect(136, 142, 1648, 928, 34, 34);
-            g.setColor(Color.WHITE); g.fillRoundRect(146, 142, 1628, 918, 30, 30);
+            g.setColor(new Color(8, 31, 70, 120)); g.fillRoundRect(ART_PANEL.x - 8, ART_PANEL.y + 8, ART_PANEL.width + 16, ART_PANEL.height + 16, 34, 34);
+            g.setColor(Color.WHITE); g.fillRoundRect(ART_PANEL.x, ART_PANEL.y, ART_PANEL.width, ART_PANEL.height, 30, 30);
             Shape clip = g.getClip();
             g.clip(new Rectangle(fit));
             g.drawImage(art, fit.x, fit.y, fit.width, fit.height, null);
             g.setClip(clip);
             g.setColor(new Color(12, 32, 66)); g.setStroke(new BasicStroke(4));
-            g.drawRoundRect(146, 142, 1628, 918, 30, 30);
+            g.drawRoundRect(ART_PANEL.x, ART_PANEL.y, ART_PANEL.width, ART_PANEL.height, 30, 30);
 
             // Keep a dedicated safe area on the right for the countdown badge so
             // long, all-caps questions never collide with the timer.
@@ -73,17 +81,21 @@ final class KidsFrameRenderer {
                 var choice = p.choices().get(i);
                 boolean correct = reveal && choice.id().equals(p.answerId());
                 var b = badgeBox(i, p.choices().size(), fit);
-                g.setColor(new Color(0, 0, 0, 85)); g.fillOval(b.x + 4, b.y + 7, b.width, b.height);
+                g.setColor(new Color(6, 24, 50, 95)); g.fillRoundRect(b.x + 4, b.y + 7, b.width, b.height, 30, 30);
                 if (correct) {
                     double pulse = revealTime < 1.2 ? 8 * Math.sin(Math.PI * Math.min(1, revealTime / 1.2)) : 0;
-                    g.setColor(CORRECT); g.setStroke(new BasicStroke(5));
-                    g.draw(new java.awt.geom.Ellipse2D.Double(b.x - 12 - pulse, b.y - 12 - pulse,
-                        b.width + 24 + 2 * pulse, b.height + 24 + 2 * pulse));
+                    g.setColor(CORRECT); g.setStroke(new BasicStroke(6));
+                    g.drawRoundRect((int)(b.x - 8 - pulse), (int)(b.y - 8 - pulse),
+                        (int)(b.width + 16 + 2 * pulse), (int)(b.height + 16 + 2 * pulse), 36, 36);
                 }
-                g.setColor(Color.WHITE); g.fillOval(b.x - 3, b.y - 3, b.width + 6, b.height + 6);
-                g.setColor(OUTLINE); g.fillOval(b.x, b.y, b.width, b.height);
-                g.setColor(correct ? CORRECT : YELLOW); g.fillOval(b.x + 6, b.y + 6, b.width - 12, b.height - 12);
-                centered(g, choice.id(), b, 62, OUTLINE);
+                g.setColor(Color.WHITE); g.fillRoundRect(b.x, b.y, b.width, b.height, 26, 26);
+                g.setColor(OUTLINE); g.setStroke(new BasicStroke(4)); g.drawRoundRect(b.x, b.y, b.width, b.height, 26, 26);
+                var letter = new Rectangle(b.x + 12, b.y + 16, 78, 92);
+                g.setColor(correct ? CORRECT : YELLOW); g.fillRoundRect(letter.x, letter.y, letter.width, letter.height, 20, 20);
+                g.setColor(OUTLINE); g.drawRoundRect(letter.x, letter.y, letter.width, letter.height, 20, 20);
+                centered(g, choice.id(), letter, 58, OUTLINE);
+                headlineCentered(g, "OPTION " + choice.id(), new Rectangle(b.x + 102, b.y + 38, b.width - 114, 48), 35, 24,
+                    correct ? new Color(26, 125, 73) : OUTLINE, 2);
             }
             if (reveal && overlay != null) {
                 int answerIndex = 0;

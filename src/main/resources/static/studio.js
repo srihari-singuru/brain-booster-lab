@@ -36,7 +36,7 @@ function runningKey(e) { return `brain-booster-running-${e.id}`; }
 function runningSince(e) { const value = Number(localStorage.getItem(runningKey(e))); return value > 0 ? value : Date.now(); }
 function durationSince(e) { const elapsed = Math.max(0, Math.floor((Date.now() - runningSince(e)) / 1000)); return `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}`; }
 function deadlineNote(e) {
-  return ({GENERATING:'The request has a two-minute deadline.', REVIEWING:'The request has a two-minute deadline.', NARRATING:'The request has a two-minute deadline.', NARRATION_GROUNDING:'The request has a two-minute deadline.', PREPARING_ART:'Each image and visual-check request has a two-minute deadline; saved artwork is reused.', SPEAKING:'Each voice request has a 90-second deadline; complete local clips are reused.', RENDERING:'Local rendering has a ten-minute deadline; frames and clips remain available.'})[e.status] || 'This action has a saved recovery path.';
+  return ({GENERATING:'The request has a two-minute deadline.', REVIEWING:'The request has a two-minute deadline.', NARRATING:'The request has a two-minute deadline.', NARRATION_GROUNDING:'The request has a two-minute deadline.', PREPARING_ART:'Each puzzle gets one premium image and a conformance check. Only a detected mismatch can trigger one saved repair image; each request has a two-minute deadline.', SPEAKING:'Each voice request has a 90-second deadline; complete local clips are reused.', RENDERING:'Local rendering has a ten-minute deadline; frames and clips remain available.'})[e.status] || 'This action has a saved recovery path.';
 }
 function savedStep(e) { const value = Number(localStorage.getItem(`brain-booster-step-${e.id}`)); return Number.isInteger(value) && value >= 0 && value < STEPS.length ? value : firstOpenStep(e); }
 function setStep(value) { step = Math.max(0, Math.min(STEPS.length - 1, value)); if (episode) localStorage.setItem(`brain-booster-step-${episode.id}`, String(step)); draw(); }
@@ -112,7 +112,7 @@ function actionFor(e, index) {
   const actions = [
     !e.spec && [retryingGeneration ? 'Retry puzzle generation' : 'Generate puzzles', retryingGeneration ? 'Send a concise recovery request. No prior puzzle content was saved.' : 'Generate the puzzle script with your configured text model.', 'generate', false],
     e.spec && !reviewGatePassed(e) && [e.review ? 'Run puzzle review again' : 'Review puzzles', e.review ? 'Run the fairness and reasoning check again using the saved puzzles.' : 'Run the fairness and reasoning check before artwork.', 'review', false],
-    reviewGatePassed(e) && !e.artworkReady && ['Generate artwork', 'Create illustrations and visual-quality checks. This uses image credits.', 'artwork', true],
+    reviewGatePassed(e) && !e.artworkReady && ['Generate artwork', 'Create clean illustrations, then check candidate order and the clue before the blind review. A detected mismatch may use one repair image credit for that puzzle.', 'artwork', true],
     e.artworkReady && e.artworkSelectionFinalized && !e.narration && ['Generate narration', 'Write the story-led narration for these selected puzzles only.', 'narration', false],
     e.narration && e.artworkReady && !isGrounded(e) && ['Ground narration', 'Verify every narrated clue against the finished images.', 'ground-narration', false],
     isGrounded(e) && !e.speechReady && ['Generate voice', 'Create local voice clips using the saved voice settings. This uses speech credits.', 'speech', true],
@@ -128,7 +128,7 @@ function waitingMessage(e, index) {
 }
 function instructionKey(action) { return ({generate:'generate',review:'review',artwork:'artwork',narration:'narration','ground-narration':'grounding',speech:'speech'})[action]; }
 function basePromptLabel(action) {
-  return ({generate:'Create picture-first family mini-mysteries from the creative prompt and the selected puzzle count.',review:'Independently check fairness, age fit, and whether every answer has one clear proof.',artwork:'Create polished 16:9 illustrations that show one large, fair visual clue with no text in the art.',narration:'Write an energetic but natural story-led voice-over grounded in the reviewed puzzles.', 'ground-narration':'Compare the narration against the finished question frames and correct only what the image proves.',speech:'Perform the approved narration with the selected OpenAI voice and speed.'})[action] || '';
+  return ({generate:'Create picture-first family mini-mysteries from the creative prompt and the selected puzzle count.',review:'Independently check fairness, age fit, and whether every answer has one clear proof.',artwork:'Create a pure, unlabelled 16:9 scene with candidates in clear left-to-right lanes and one visible proof. The application adds option cards below the image.',narration:'Write an energetic but natural story-led voice-over grounded in the reviewed puzzles.', 'ground-narration':'Compare the narration against the finished question frames and correct only what the image proves.',speech:'Perform the approved narration with the selected OpenAI voice and speed.'})[action] || '';
 }
 function stageDirection(e, action) {
   const key = instructionKey(action); if (!key) return null;

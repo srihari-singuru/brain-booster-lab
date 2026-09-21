@@ -15,23 +15,23 @@ class KidsFrameRendererTest {
     @Test void acceptsThreeEasyVisualPuzzles() {
         PilotFixtures.kids().validate();
         var spec=new EpisodeSpec("Little mysteries",List.of(puzzle(),puzzle(),puzzle()));spec.validate();
-        assertThat(StudioRenderer.layoutVersion(spec)).isEqualTo("kids-thumbnail-8");
+        assertThat(StudioRenderer.layoutVersion(spec)).isEqualTo("kids-thumbnail-9");
         assertThat(StudioRenderer.layoutVersion(PilotFixtures.sample())).isEqualTo("reasoning-2");
     }
     @Test void fullBleedArtworkKeepsSideEdgesAndFloorEvidenceVisible() {
         var source=new BufferedImage(1536,864,BufferedImage.TYPE_INT_RGB);
         var g=source.createGraphics();g.setColor(Color.MAGENTA);g.fillRect(0,0,1536,864);g.dispose();
         var frame=KidsFrameRenderer.frame(puzzle(),source,0,"question",12,true);
-        assertThat(KidsFrameRenderer.artBox(1536,864)).isEqualTo(new Rectangle(160,156,1600,900));
+        assertThat(KidsFrameRenderer.artBox(1536,864)).isEqualTo(new Rectangle(320,152,1280,720));
         var fit=ImageLayout.contain(1536,864,KidsFrameRenderer.artBox(1536,864));
-        assertThat(fit).isEqualTo(new Rectangle(160,156,1600,900));
+        assertThat(fit).isEqualTo(new Rectangle(320,152,1280,720));
         assertThat(frame.getRGB(fit.x+200,fit.y+200)).isEqualTo(Color.MAGENTA.getRGB());
         assertThat(frame.getRGB(0,700)).isNotEqualTo(Color.MAGENTA.getRGB());
         assertThat(frame.getRGB(1919,700)).isNotEqualTo(Color.MAGENTA.getRGB());
-        assertThat(frame.getRGB(960,1006)).isEqualTo(Color.MAGENTA.getRGB());
+        assertThat(frame.getRGB(960,840)).isEqualTo(Color.MAGENTA.getRGB());
         for(int i=0;i<3;i++) {
             var badge=KidsFrameRenderer.badgeBox(i,3,fit);
-            assertThat(badge.x).isBetween(fit.x+i*fit.width/3,(i+1)*fit.width/3+fit.x-badge.width);
+            assertThat(badge.y).isGreaterThan(fit.y+fit.height);
             assertThat(frame.getRGB(badge.x+15,badge.y+58)).isNotEqualTo(Color.MAGENTA.getRGB());
         }
     }
@@ -50,10 +50,10 @@ class KidsFrameRendererTest {
         var reveal=KidsFrameRenderer.frame(puzzle(),art,0,"reveal",0,false);
         for(int i=0;i<3;i++) {
             var b=KidsFrameRenderer.badgeBox(i,3,KidsFrameRenderer.artBox(1920,1080));
-            if(i==1) assertThat(reveal.getRGB(b.x+15,b.y+58)).isNotEqualTo(question.getRGB(b.x+15,b.y+58));
-            else assertThat(reveal.getRGB(b.x+15,b.y+58)).isEqualTo(question.getRGB(b.x+15,b.y+58));
+            if(i==1) assertThat(reveal.getRGB(b.x+50,b.y+58)).isNotEqualTo(question.getRGB(b.x+50,b.y+58));
+            else assertThat(reveal.getRGB(b.x+50,b.y+58)).isEqualTo(question.getRGB(b.x+50,b.y+58));
         }
-        assertThat(reveal.getRGB(1200,1020)).isEqualTo(Color.MAGENTA.getRGB());
+        assertThat(reveal.getRGB(1200,800)).isEqualTo(Color.MAGENTA.getRGB());
     }
     @Test void oversizedOverlayFailsInsteadOfTruncatingOrSqueezingLetters() {
         var g=new BufferedImage(1920,1080,BufferedImage.TYPE_INT_RGB).createGraphics();
@@ -75,10 +75,8 @@ class KidsFrameRendererTest {
         var end=KidsFrameRenderer.frame(puzzle(),art,0,"reveal",0,false,overlay,1.2);
         var fit=ImageLayout.contain(1920,1080,KidsFrameRenderer.artBox(1920,1080));
         var clue=KidsFrameRenderer.keepClueOnStage(overlay.clue().bounds(fit),KidsFrameRenderer.artBox(1920,1080));
-        int x=(int)clue.getCenterX(),y=(int)clue.getY();
-        assertThat(question.getRGB(x,y)).isEqualTo(Color.BLACK.getRGB());
-        assertThat(start.getRGB(x,y)).isEqualTo(Color.BLACK.getRGB());
-        assertThat(end.getRGB(x,y)).isNotEqualTo(Color.BLACK.getRGB());
-        assertThat(end.getRGB(x,1050)).isEqualTo(Color.BLACK.getRGB());
+        int x=(int)(clue.getCenterX()+clue.getWidth()*.61),y=(int)clue.getCenterY();
+        assertThat(end.getRGB(x,y)).isNotEqualTo(start.getRGB(x,y));
+        assertThat(end.getRGB(x,1050)).isNotEqualTo(Color.BLACK.getRGB());
     }
 }
