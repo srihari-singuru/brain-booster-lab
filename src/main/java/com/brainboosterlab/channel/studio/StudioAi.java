@@ -168,13 +168,19 @@ class StudioAi {
         var questions = spec.puzzles().stream().map(p -> java.util.Map.of(
             "setup", p.setup(), "question", p.question(), "facts", p.facts(), "choices", p.choices(),
             "scenePlan", "visual".equals(p.kind()) ? p.sceneDescription() : "Not applicable")).toList();
-        String prompt = "Independently solve these " + spec.puzzles().size() + " reasoning puzzles in order. For each return puzzleNumber in order starting at 1, "
-            + "independentlySolvedAnswerId matching one supplied OPTION letter (or NONE if ambiguous), fair boolean, and notes explaining proof "
-            + "and why alternatives fail. Reject ambiguity, unstated necessary facts, harmful stereotypes, "
-            + "claims that lying proves guilt and tiny object hunts. For visual mini-mysteries, solve from the planned "
-            + "scene, checking one visible clue and one simple inference appropriate to family viewers ages 6–18; reject homework-like "
-            + "reasoning, unsafe stereotypes and unstated supernatural rules. This is only a concept check; an actual-image "
-            + "blind visual check follows later. Judge family suitability. "
+        String prompt = "You are an independent, adversarial editor for family visual challenges. Independently solve these "
+            + spec.puzzles().size() + " puzzles in order. For each return puzzleNumber in order starting at 1, "
+            + "independentlySolvedAnswerId matching one supplied OPTION letter (or NONE if ambiguous), fair boolean, and notes explaining the proof "
+            + "and why every alternative fails. Judge for children ages 6–18 solving with parents: each puzzle must be a satisfying "
+            + "medium challenge, not an instant giveaway and not a frustrating hunt. It must be fairly solvable from one meaningful, phone-visible "
+            + "visual observation and one simple inference during a ten-second look. "
+            + "Reject ambiguity, unstated necessary facts, harmful stereotypes, claims that lying proves guilt, arithmetic, number patterns, "
+            + "time calculations, truth tables, long alibis, schoolwork, and tiny object hunts. Verify every puzzle has 3–5 consecutive supplied "
+            + "OPTION letters, equally plausible candidates, and a correct answer proven by the planned picture rather than expression, appearance, or category difference. "
+            + "Audit the complete collection for variety: reject an episode if its puzzles repeat a setting, premise, visual mechanism, clue type, "
+            + "question shape, or reveal logic, or if it falls back on stock robot/cardboard, winding-key, missing-shadow, reflection, or disguised-ghost patterns without an explicit brief reason. "
+            + "Friendly monsters and fantasy are welcome only when age-appropriate and supported by an explicit fictional rule where needed. "
+            + "This is only a concept check; an actual-image blind visual check follows later. Do not rubber-stamp. "
             + "This is an adversarial review, not a request to endorse. Questions: " + json.writeValueAsString(questions)
             + operatorSuffix(operatorDirection);
         var response = client.responses().create(ResponseCreateParams.builder().model(activeModel).input(prompt)
