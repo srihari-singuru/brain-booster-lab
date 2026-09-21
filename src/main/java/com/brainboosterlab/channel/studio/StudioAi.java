@@ -189,9 +189,9 @@ class StudioAi {
             + (recovery ? "\nRECOVERY MODE: A prior response could not be decoded. Return the complete schema only. Keep every field concise, especially sceneDescription; do not omit any puzzle or use markdown.\n" : "")
             + operatorSuffix(operatorDirection);
         var response = client.responses().create(ResponseCreateParams.builder().model(activeModel).input(prompt)
-            // Batching keeps each request bounded, so the creator-selected medium
-            // reasoning budget can improve puzzle quality without oversized calls.
-            .store(false).reasoning(Reasoning.builder().effort(ReasoningEffort.MEDIUM).build())
+            // Creative drafts favor faster, lower-cost exploration; the independent review
+            // below remains medium effort before artwork can proceed.
+            .store(false).reasoning(Reasoning.builder().effort(ReasoningEffort.LOW).build())
             .maxOutputTokens(puzzleCount >= 4 ? 7500 : 6500).text(EpisodeSpec.class).build());
         EpisodeSpec spec = response.output().stream().flatMap(i -> i.message().stream())
             .flatMap(m -> m.content().stream()).flatMap(c -> c.outputText().stream()).findFirst()

@@ -115,7 +115,8 @@ class NarrationAi {
             Return the required structured object. Episode specification:
             """ + json.writeValueAsString(spec) + operatorSuffix(operatorDirection);
         var response = client.responses().create(ResponseCreateParams.builder().model(activeModel).input(prompt)
-            .store(false).reasoning(Reasoning.builder().effort(ReasoningEffort.MEDIUM).build())
+            // Draft quickly, then keep the independent narration review and visual grounding at medium effort.
+            .store(false).reasoning(Reasoning.builder().effort(ReasoningEffort.LOW).build())
             .maxOutputTokens(7000).text(EpisodeNarration.class).build());
         EpisodeNarration narration = response.output().stream().flatMap(item -> item.message().stream())
             .flatMap(message -> message.content().stream()).flatMap(content -> content.outputText().stream()).findFirst()
