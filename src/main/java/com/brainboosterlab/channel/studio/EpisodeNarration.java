@@ -16,7 +16,7 @@ public record EpisodeNarration(String episodeOpening, List<PuzzleNarration> puzz
             PuzzleNarration beat = puzzles.get(i);
             EpisodeSpec.require(beat != null && beat.puzzleNumber() == i + 1,
                 "Narration puzzle numbers must be consecutive and in order");
-            // These word ranges are written for the longer ten-second spoken slots.
+            // The generator keeps future scripts compact enough for the fixed production speech slots.
             line(beat.questionLeadIn(), 18, 34, "Question lead-in");
             line(beat.timerCue(), 3, 10, "Timer cue");
             line(beat.revealExplanation(), 18, 34, "Reveal explanation");

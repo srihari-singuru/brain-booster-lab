@@ -18,11 +18,11 @@ class StudioRenderer {
     }
     static final int WIDTH = 1920, HEIGHT = 1080;
     /** Temporary speech slots; narration later replaces these exact durations. */
-    static final int VISUAL_SETUP_SECONDS = 10;
-    static final int VISUAL_QUESTION_SECONDS = 10;
-    /** A short natural breath before the narrator invites the child to start thinking. */
-    static final double PRE_TIMER_PAUSE_SECONDS = .65;
-    static final int VISUAL_REVEAL_SECONDS = 10;
+    static final int VISUAL_SETUP_SECONDS = 9;
+    static final int VISUAL_QUESTION_SECONDS = 8;
+    /** A short natural breath plus the timer cue totals exactly three seconds at the default speed. */
+    static final double PRE_TIMER_PAUSE_SECONDS = .50;
+    static final int VISUAL_REVEAL_SECONDS = 8;
     static final Color INK = new Color(13, 25, 38), PAPER = new Color(250, 247, 236), GOLD = new Color(255, 209, 96);
     private final String ffmpeg;
     StudioRenderer(@Value("${brain-booster.render.ffmpeg-path:ffmpeg}") String ffmpeg) { this.ffmpeg = ffmpeg; }
@@ -69,7 +69,7 @@ class StudioRenderer {
             var p = spec.puzzles().get(i);
             return new EpisodeNarration.PuzzleNarration(i + 1,
                 "A cheerful mini mystery is unfolding with three lively choices and one clever surprise in the picture. Which option solves this friendly puzzle today?",
-                "Your ten seconds start now.",
+                "Take eight seconds to choose your answer.",
                 "The answer is OPTION " + p.answerId() + ". Follow the clearest clue in the scene; it shows why this choice fits the puzzle and the others do not.");
         }).toList();
         return new EpisodeNarration("Welcome to Brain Booster Lab, where every small clue can spark a brilliant idea.", beats,

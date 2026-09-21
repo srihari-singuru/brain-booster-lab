@@ -90,7 +90,7 @@ class StudioAi {
         String prompt = """
             Create %d original illustrated visual mini-mysteries for a family channel: children ages 6–18
             solving lively challenges with parents. Set kind="visual" for EVERY puzzle. Each is a satisfying
-            family challenge: not an instant giveaway, but fair to solve during one ten-second look by comparing
+            family challenge: not an instant giveaway, but fair to solve during one eight-second look by comparing
             the whole scene, noticing one meaningful detail, and making one simple inference. The first puzzle
             is not a warm-up; every puzzle should have the same enjoyable, medium challenge level. Never use
             arithmetic, number patterns, time calculations, truth tables, long alibis, schoolwork, or tiny
@@ -137,7 +137,7 @@ class StudioAi {
             palette, luminous key light, strong color separation between subjects, crisp silhouettes,
             and a clean focal clue. The result should feel energetic at small phone size without
             neon skin, plastic 3D rendering or visual noise. Do not copy channel characters or designs.
-            thinkSeconds10–15.
+            thinkSeconds: 8–15; use 8 for every visual puzzle.
             Original creative brief follows:
             """.formatted(puzzleCount) + brief + recentTitleSuffix(recentPuzzleTitles) + operatorSuffix(operatorDirection);
         var response = client.responses().create(ResponseCreateParams.builder().model(activeModel).input(prompt)
@@ -173,7 +173,7 @@ class StudioAi {
             + "independentlySolvedAnswerId matching one supplied OPTION letter (or NONE if ambiguous), fair boolean, and notes explaining the proof "
             + "and why every alternative fails. Judge for children ages 6–18 solving with parents: each puzzle must be a satisfying "
             + "medium challenge, not an instant giveaway and not a frustrating hunt. It must be fairly solvable from one meaningful, phone-visible "
-            + "visual observation and one simple inference during a ten-second look. "
+            + "visual observation and one simple inference during an eight-second look. "
             + "Reject ambiguity, unstated necessary facts, harmful stereotypes, claims that lying proves guilt, arithmetic, number patterns, "
             + "time calculations, truth tables, long alibis, schoolwork, and tiny object hunts. Verify every puzzle has 3–5 consecutive supplied "
             + "OPTION letters, equally plausible candidates, and a correct answer proven by the planned picture rather than expression, appearance, or category difference. "

@@ -42,7 +42,7 @@ public record EpisodeSpec(String title, List<Puzzle> puzzles) {
             text(p.explanation(), visual ? 85 : 300, "Explanation");
             require(!visual || p.explanation().trim().split("\\s+").length <= 14, "Visual reveals must be fourteen words or fewer");
             text(p.sceneDescription(), 1600, "Scene description");
-            require(p.thinkSeconds() >= 10 && p.thinkSeconds() <= (visual ? 15 : 25), "Thinking time outside supported range");
+            require(p.thinkSeconds() >= 8 && p.thinkSeconds() <= (visual ? 15 : 25), "Thinking time outside supported range");
         }
     }
     private static void text(String value, int max, String label) {

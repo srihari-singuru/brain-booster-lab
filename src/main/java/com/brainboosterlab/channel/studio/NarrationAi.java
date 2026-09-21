@@ -72,11 +72,11 @@ class NarrationAi {
 
             Structure rules:
             - episodeOpening: one fresh welcome, 4–28 words. It will be used in a future opening, not today’s video.
-            - for each puzzle, questionLeadIn: 22–28 words, designed for exactly ten seconds at the chosen voice speed. Set a mini-story and ask
+            - for each puzzle, questionLeadIn: 20–25 words, designed for exactly nine seconds at the chosen voice speed. Set a mini-story and ask
               the on-screen question naturally, but DO NOT name, label, or hint at the answer or clue. Build a little
               anticipation without repeating the question word-for-word.
-            - timerCue: 5–7 words. It plays immediately before the fixed ten-second silent timer begins. Do not count aloud.
-            - revealExplanation: 22–28 words, designed for exactly ten seconds at the chosen voice speed. State the correct choice and the exact
+            - timerCue: 5–7 words. It must invite viewers to take exactly EIGHT seconds, and it plays immediately before the fixed eight-second silent timer begins. Do not count aloud.
+            - revealExplanation: 18–23 words, designed for exactly eight seconds at the chosen voice speed. State the correct choice and the exact
               visible clue/rule that proves it in a lively, natural way that rewards the viewer’s reasoning.
             - episodeClosing: one fresh 4–28-word sign-off for a future ending.
             - Never use a character name, choice label, or descriptive choice name anywhere in narration. Refer to a choice only as its supplied OPTION letter (A through E).
@@ -115,7 +115,7 @@ class NarrationAi {
             noAnswerLeak is true only when the question lead-in and timer cue do NOT reveal or strongly telegraph the
             correct option, character/name, answer letter, decisive visual clue, or explanation. storyFitsPuzzle is
             true only when the narration uses no invented evidence and the reveal correctly names the right answer and
-            its exact proof, identifying the answer only as the supplied OPTION letter (A through E). It must reject any use of a choice name or label. timeFits is true only when lead-in is 22–28 words, timer cue 5–7, and reveal 22–28.
+            its exact proof, identifying the answer only as the supplied OPTION letter (A through E). It must reject any use of a choice name or label. timeFits is true only when lead-in is 20–25 words, timer cue 5–7 and explicitly says eight seconds, and reveal 18–23.
             familySafe is true only for warm, age-appropriate language with no pressure, shame, fear, stereotypes or
             unsafe claims. Be adversarial: reject generic filler, babyish delivery, classroom-like explanation, and ambiguous proof. Put concise actionable feedback
             in notes. Do not rubber-stamp.
@@ -155,8 +155,8 @@ class NarrationAi {
             For every puzzle, verify that the correct option and decisive clue are truly visible, readable, and
             unambiguous in the frame. Check that the narration names only the supplied OPTION letter (A through E), never
             a character name or choice label. If the frame supports the puzzle, polish the narration only as needed
-            to speak exactly what a family viewer ages 6–18 can fairly infer from the displayed frame. Preserve the lively 10-second
-            lead-in, fixed 10-second timer cue, and 10-second reveal structure. Never invent details to repair art.
+            to speak exactly what a family viewer ages 6–18 can fairly infer from the displayed frame. Preserve the lively 9-second
+            lead-in, fixed 8-second timer, and 8-second reveal structure. Never invent details to repair art.
 
             If any image does not prove its clue, set that finding’s visualClueConfirmed and narrationMatchesFrame
             false, explain the mismatch, and keep the narration conservative. Each notes field must be one or two short sentences, under 300 characters. Return the complete structured
@@ -184,7 +184,7 @@ class NarrationAi {
             var puzzle = spec.puzzles().get(index);
             return new EpisodeNarration.PuzzleNarration(index + 1,
                 "A bright little scene is unfolding, with three lively choices and one clever surprise waiting in the picture. Which option solves this friendly puzzle today?",
-                "Your ten seconds start now.",
+                "Take eight seconds to choose your answer.",
                 "The answer is OPTION " + puzzle.answerId() + ". Follow the clear clue in the scene; it explains why this choice fits the puzzle and the other choices do not.");
         }).toList();
         return new EpisodeNarration("Welcome to Brain Booster Lab, where every small clue can spark a brilliant idea.",

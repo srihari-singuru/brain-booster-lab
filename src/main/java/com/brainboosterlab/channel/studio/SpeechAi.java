@@ -40,9 +40,9 @@ class SpeechAi {
         "nova", "onyx", "sage", "shimmer", "verse", "marin", "cedar");
     // One selected speed across every phase; deterministic slot lengths prevent perceptible pacing shifts.
     private static final double STANDARD_SPEECH_SPEED = 1.00;
-    private static final double QUESTION_SECONDS_AT_1X = 10.0;
-    private static final double TIMER_CUE_SECONDS_AT_1X = 2.6;
-    private static final double REVEAL_SECONDS_AT_1X = 10.0;
+    private static final double QUESTION_SECONDS_AT_1X = 9.0;
+    private static final double TIMER_CUE_SECONDS_AT_1X = 2.5;
+    private static final double REVEAL_SECONDS_AT_1X = 8.0;
     private static final Pattern WORD = Pattern.compile("[\\p{L}\\p{N}]+", Pattern.UNICODE_CHARACTER_CLASS);
     private final String mode;
     private final String model;
