@@ -128,12 +128,12 @@ class SpeechAi {
     }
 
     private static String questionDirection() {
-        return "Bright, energetic adult male storyteller for children ages 6 to 10. Sound delighted, playful and naturally animated, with clear English, a natural medium-low pitch, and a slightly quicker, lively pace. Lift the exciting words and questions, smile in the delivery, and make every discovery feel fun. Never sound flat, sleepy, robotic, like a baby voice, or like a frantic game-show host. Be confidently audible without shouting. Speak exactly the supplied words and do not add a greeting.";
+        return "Bright, energetic adult male storyteller for children ages 6 to 10. Sound delighted, playful and naturally animated, with clear English, a natural bright medium pitch, and a slightly quicker, lively pace. Lift the exciting words and questions, smile in the delivery, and make every discovery feel fun. Never sound flat, sleepy, robotic, like a baby voice, or like a frantic game-show host. Be confidently audible without shouting. Speak exactly the supplied words and do not add a greeting.";
     }
     private static String timerDirection() {
-        return "Energetic adult male timer cue for children. Deliver the line with a bright, exciting launch, a natural medium-low pitch, and crisp, clear words. Say it exactly once; do not count, add sound effects, or add extra words.";
+        return "Energetic adult male timer cue for children. Deliver the line with a bright, exciting launch, a natural bright medium pitch, and crisp, clear words. Say it exactly once; do not count, add sound effects, or add extra words.";
     }
     private static String revealDirection() {
-        return "Bright, expressive adult male storyteller for children ages 6 to 10. Make the answer feel like a cheerful aha moment: warmly celebrate the discovery, then clearly explain the proof. Natural English, a natural medium-low pitch, and lively emphasis, no baby talk, no flat delivery, and no exaggerated game-show shouting. Speak exactly the supplied words.";
+        return "Bright, expressive adult male storyteller for children ages 6 to 10. Make the answer feel like a cheerful aha moment: warmly celebrate the discovery, then clearly explain the proof. Natural English, a natural bright medium pitch, and lively emphasis, no baby talk, no flat delivery, and no exaggerated game-show shouting. Speak exactly the supplied words.";
     }
 }

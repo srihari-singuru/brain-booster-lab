@@ -65,7 +65,7 @@ OPENAI_TTS_MODEL=gpt-4o-mini-tts
 OPENAI_TTS_VOICE=cedar
 ```
 
-The existing `OPENAI_API_KEY` is loaded from the process environment. Question and reveal narration use 1.05x speech speed; the timer cue stays at 1.00x for clarity. Pitch is specified through the delivery instruction as a natural medium-low register because the Speech API does not expose an independent numeric pitch control. ChatGPT subscriptions
+The existing `OPENAI_API_KEY` is loaded from the process environment. Question and reveal narration use 1.05x speech speed; the timer cue stays at 1.00x for clarity. Pitch is specified through the delivery instruction as a natural bright medium register because the Speech API does not expose an independent numeric pitch control. ChatGPT subscriptions
 do not pay these API calls. Each pilot uses one script request, one reasoning review,
 three image generations and three visual reviews. No automatic paid retries are made by
 the studio. An interrupted artwork stage reuses saved images and completed visual checks.
