@@ -23,7 +23,8 @@ class StudioService {
                 EpisodeNarration narration, NarrationAi.Review narrationReview, NarrationGrounding narrationGrounding, EpisodeSpeech speech,
                 String lastError, String failedStage, String scriptModel, String responseId, String narrationModel, String narrationResponseId,
                 String narrationGroundingModel, String speechModel, String speechVoice, EpisodeSettings settings, StageInstructions stageInstructions, Instant approvedAt, boolean artworkReady,
-                List<StudioAi.VisualReview> visualReviews, boolean previewReady, boolean finalReady, boolean speechReady, boolean puzzleReviewOverridden) {}
+                List<StudioAi.VisualReview> visualReviews, boolean previewReady, boolean finalReady, boolean speechReady, boolean puzzleReviewOverridden,
+                boolean artworkSelectionFinalized) {}
     private final StudioRepository repository;
     private final StudioAi ai;
     private final NarrationAi narrator;
@@ -116,6 +117,52 @@ class StudioService {
     synchronized View startNarration(UUID id) { return start(id, "NARRATING", () -> narration(id)); }
     synchronized View startGroundNarration(UUID id) { return start(id, "NARRATION_GROUNDING", () -> groundNarration(id)); }
     synchronized View startArtwork(UUID id) { return start(id, "PREPARING_ART", () -> artwork(id)); }
+    synchronized View selectArtworkPuzzles(UUID id, List<Integer> requestedPuzzleNumbers) {
+        var source = find(id);
+        require(source.approvedAt == null, "Approved episode is immutable; create a revision");
+        require(source.narrationJson == null, "Select the puzzles before narration starts; create a revision to change a narrated episode");
+        var original = spec(source);
+        var sourceView = view(source);
+        require(sourceView.artworkReady(), "Prepare the complete artwork before choosing puzzles");
+        require(sourceView.visualReviews().size() == original.puzzles().size()
+                && sourceView.visualReviews().stream().allMatch(StudioAi.VisualReview::acceptable),
+            "Resolve the artwork quality checks before choosing puzzles");
+        var positions = selectedPuzzlePositions(requestedPuzzleNumbers, original.puzzles().size());
+        var selectedPuzzles = positions.stream().map(i -> original.puzzles().get(i)).toList();
+        var selectedSpec = new EpisodeSpec(original.title(), selectedPuzzles);
+        selectedSpec.validate();
+
+        var sourceSettings = settings(source);
+        var revision = new StudioEpisode("Artwork selection of " + id + ": " + source.brief);
+        revision.settingsJson = json.writeValueAsString(new EpisodeSettings(sourceSettings.channelName(), selectedPuzzles.size(),
+            sourceSettings.textModel(), sourceSettings.imageModel(), sourceSettings.narrationModel(), sourceSettings.speechModel(),
+            sourceSettings.speechVoice(), sourceSettings.speechSpeed()));
+        revision.specJson = json.writeValueAsString(selectedSpec);
+        revision.reviewJson = json.writeValueAsString(selectedReview(source, positions));
+        revision.puzzleReviewOverridden = source.puzzleReviewOverridden;
+        revision.artworkSelectionFinalized = true;
+        revision.scriptModel = "artwork-selection (source: " + source.scriptModel + ")";
+        revision.responseId = source.responseId;
+        revision.status = "ART_REVIEW";
+        repository.saveAndFlush(revision);
+        try {
+            Path sourceDir = directory(source.id), targetDir = directory(revision.id);
+            Files.createDirectories(targetDir);
+            for (int targetIndex = 0; targetIndex < positions.size(); targetIndex++) {
+                int sourceIndex = positions.get(targetIndex);
+                copyIfPresent(sourceDir.resolve("art-" + sourceIndex + ".png"), targetDir.resolve("art-" + targetIndex + ".png"));
+                copyIfPresent(sourceDir.resolve("provenance-" + sourceIndex + ".json"), targetDir.resolve("provenance-" + targetIndex + ".json"));
+                copyIfPresent(sourceDir.resolve("overlay-" + sourceIndex + ".json"), targetDir.resolve("overlay-" + targetIndex + ".json"));
+            }
+            renderer.previews(selectedSpec, targetDir, sourceSettings.channelName());
+            for (int targetIndex = 0; targetIndex < positions.size(); targetIndex++) {
+                int sourceIndex = positions.get(targetIndex);
+                copyIfPresent(sourceDir.resolve("visual-review-" + sourceIndex + ".json"), targetDir.resolve("visual-review-" + targetIndex + ".json"));
+                Files.writeString(targetDir.resolve("visual-review-" + targetIndex + ".sha256"), digest(targetDir.resolve("question-" + targetIndex + ".png")));
+            }
+            return view(revision);
+        } catch (Exception ex) { return failed(revision, ex); }
+    }
     synchronized View startSpeech(UUID id) { return start(id, "SPEAKING", () -> speech(id)); }
     synchronized View startRender(UUID id, boolean draft) { return start(id, "RENDERING", () -> render(id, draft)); }
     synchronized View startHighlight(UUID id, List<SceneOverlay.Region> clues) { return start(id, "PREPARING_ART", () -> highlight(id, clues)); }
@@ -549,6 +596,32 @@ class StudioService {
         }
         return true;
     }
+    private List<Integer> selectedPuzzlePositions(List<Integer> requestedNumbers, int total) {
+        require(requestedNumbers != null && !requestedNumbers.isEmpty(), "Choose at least one puzzle to continue");
+        var unique = new TreeSet<Integer>();
+        for (Integer number : requestedNumbers) {
+            require(number != null && number >= 1 && number <= total, "Choose only puzzle numbers from 1 to " + total);
+            require(unique.add(number), "Choose each puzzle only once");
+        }
+        return unique.stream().map(number -> number - 1).toList();
+    }
+    private StudioAi.Review selectedReview(StudioEpisode source, List<Integer> positions) {
+        require(source.reviewJson != null, "Run the puzzle review before choosing puzzles");
+        var sourceReview = json.readValue(source.reviewJson, StudioAi.Review.class);
+        require(sourceReview.findings() != null, "The saved puzzle review is incomplete; run it again before choosing puzzles");
+        var findings = new ArrayList<StudioAi.Finding>();
+        for (int targetIndex = 0; targetIndex < positions.size(); targetIndex++) {
+            int sourceIndex = positions.get(targetIndex);
+            require(sourceReview.findings().size() > sourceIndex && sourceReview.findings().get(sourceIndex) != null,
+                "The saved puzzle review is incomplete; run it again before choosing puzzles");
+            var sourceFinding = sourceReview.findings().get(sourceIndex);
+            findings.add(new StudioAi.Finding(targetIndex + 1, sourceFinding.independentlySolvedAnswerId(), sourceFinding.fair(), sourceFinding.notes()));
+        }
+        return new StudioAi.Review(List.copyOf(findings));
+    }
+    private static void copyIfPresent(Path source, Path target) throws java.io.IOException {
+        if (Files.isRegularFile(source)) Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING);
+    }
     private EpisodeNarration narration(StudioEpisode e, EpisodeSpec spec) {
         require(e.narrationJson != null, "Generate narration first");
         var narration = json.readValue(e.narrationJson, EpisodeNarration.class);
@@ -621,7 +694,8 @@ class StudioService {
             e.narrationReviewJson == null ? null : json.readValue(e.narrationReviewJson, NarrationAi.Review.class),
             e.narrationGroundingJson == null ? null : json.readValue(e.narrationGroundingJson, NarrationGrounding.class), speech, e.lastError, e.failedStage,
             e.scriptModel, e.responseId, e.narrationModel, e.narrationResponseId, e.narrationGroundingModel, e.speechModel, e.speechVoice, settings(e), stageInstructions(e),
-            e.approvedAt, ready, reviews, Files.isRegularFile(dir.resolve("preview.mp4")), Files.isRegularFile(dir.resolve("final.mp4")), speechReady, e.puzzleReviewOverridden);
+            e.approvedAt, ready, reviews, Files.isRegularFile(dir.resolve("preview.mp4")), Files.isRegularFile(dir.resolve("final.mp4")), speechReady, e.puzzleReviewOverridden,
+            e.artworkSelectionFinalized);
     }
     private View safeView(StudioEpisode episode) {
         try { return view(episode); }
@@ -633,7 +707,7 @@ class StudioService {
                 "This older saved episode no longer matches the current puzzle format. Its files are retained, but create a new episode to continue.", episode.failedStage,
                 episode.scriptModel, episode.responseId, episode.narrationModel, episode.narrationResponseId,
                 episode.narrationGroundingModel, episode.speechModel, episode.speechVoice, savedSettings, StageInstructions.EMPTY, episode.approvedAt,
-                false, List.of(), false, false, false, false);
+                false, List.of(), false, false, false, false, false);
         }
     }
 

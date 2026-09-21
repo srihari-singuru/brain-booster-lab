@@ -15,6 +15,7 @@ class StudioController {
     record Brief(@NotBlank @Size(max = 4000) String brief, EpisodeSettings settings) {}
     record BriefUpdate(@NotBlank @Size(max = 4000) String brief) {}
     record RestyleOptions(List<SceneOverlay.Region> clueRegions) {}
+    record ArtworkSelection(List<Integer> puzzleNumbers) {}
     private final StudioService studio;
     private final OpenAiModelCatalog models;
     StudioController(StudioService studio, OpenAiModelCatalog models) { this.studio = studio; this.models = models; }
@@ -43,6 +44,8 @@ class StudioController {
     @PostMapping(value = "/{id}/restyle", consumes = "application/json") StudioService.View restyle(@PathVariable UUID id,
         @RequestBody(required = false) RestyleOptions options) { return studio.startRestyle(id, options == null ? null : options.clueRegions()); }
     @PostMapping(value = "/{id}/artwork", consumes = "application/json") StudioService.View artwork(@PathVariable UUID id) { return studio.startArtwork(id); }
+    @PostMapping(value = "/{id}/artwork-selection", consumes = "application/json") StudioService.View artworkSelection(@PathVariable UUID id,
+        @RequestBody ArtworkSelection selection) { return studio.selectArtworkPuzzles(id, selection == null ? null : selection.puzzleNumbers()); }
     @PostMapping(value = "/{id}/highlight", consumes = "application/json") StudioService.View highlight(@PathVariable UUID id,
         @RequestBody RestyleOptions options) { return studio.startHighlight(id, options == null ? null : options.clueRegions()); }
     @PostMapping(value = "/{id}/visual-revision", consumes = "application/json") StudioService.View visualRevision(@PathVariable UUID id) {

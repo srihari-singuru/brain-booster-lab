@@ -41,7 +41,7 @@ function deadlineNote(e) {
 function savedStep(e) { const value = Number(localStorage.getItem(`brain-booster-step-${e.id}`)); return Number.isInteger(value) && value >= 0 && value < STEPS.length ? value : firstOpenStep(e); }
 function setStep(value) { step = Math.max(0, Math.min(STEPS.length - 1, value)); if (episode) localStorage.setItem(`brain-booster-step-${episode.id}`, String(step)); draw(); }
 function firstOpenStep(e) {
-  if (!e.spec) return 0; if (!reviewGatePassed(e)) return 1; if (!e.artworkReady) return 2; if (!e.narration) return 3;
+  if (!e.spec) return 0; if (!reviewGatePassed(e)) return 1; if (!e.artworkReady || !e.artworkSelectionFinalized) return 2; if (!e.narration) return 3;
   if (!isGrounded(e)) return 4; if (!e.speechReady) return 5; if (!e.previewReady) return 6; if (!e.approvedAt) return 7; if (!e.finalReady) return 8; return 8;
 }
 function retryDefinition(e) {
@@ -113,7 +113,7 @@ function actionFor(e, index) {
     !e.spec && [retryingGeneration ? 'Retry puzzle generation' : 'Generate puzzles', retryingGeneration ? 'Send a concise recovery request. No prior puzzle content was saved.' : 'Generate the puzzle script with your configured text model.', 'generate', false],
     e.spec && !reviewGatePassed(e) && [e.review ? 'Run puzzle review again' : 'Review puzzles', e.review ? 'Run the fairness and reasoning check again using the saved puzzles.' : 'Run the fairness and reasoning check before artwork.', 'review', false],
     reviewGatePassed(e) && !e.artworkReady && ['Generate artwork', 'Create illustrations and visual-quality checks. This uses image credits.', 'artwork', true],
-    e.artworkReady && !e.narration && ['Generate narration', 'Write the story-led narration for these exact puzzles.', 'narration', false],
+    e.artworkReady && e.artworkSelectionFinalized && !e.narration && ['Generate narration', 'Write the story-led narration for these selected puzzles only.', 'narration', false],
     e.narration && e.artworkReady && !isGrounded(e) && ['Ground narration', 'Verify every narrated clue against the finished images.', 'ground-narration', false],
     isGrounded(e) && !e.speechReady && ['Generate voice', 'Create local voice clips using the saved voice settings. This uses speech credits.', 'speech', true],
     e.speechReady && !e.previewReady && ['Render preview', 'Create a reviewable video before approval.', 'preview', false],
@@ -123,7 +123,7 @@ function actionFor(e, index) {
   return actions[index] || null;
 }
 function waitingMessage(e, index) {
-  const requirements = [null, 'Generate puzzles first.', 'Complete the puzzle review or deliberately continue with its warnings before creating artwork.', 'Generate artwork before narration.', 'Generate narration and artwork before grounding.', 'Pass narration grounding before creating voice.', 'Generate voice before rendering a preview.', 'Render a preview before approval.', 'Approve the episode before final rendering.'];
+  const requirements = [null, 'Generate puzzles first.', 'Complete the puzzle review or deliberately continue with its warnings before creating artwork.', 'Choose the final puzzle set after artwork, then generate narration.', 'Generate narration and artwork before grounding.', 'Pass narration grounding before creating voice.', 'Generate voice before rendering a preview.', 'Render a preview before approval.', 'Approve the episode before final rendering.'];
   return requirements[index];
 }
 function instructionKey(action) { return ({generate:'generate',review:'review',artwork:'artwork',narration:'narration','ground-narration':'grounding',speech:'speech'})[action]; }
@@ -168,6 +168,43 @@ function reviewDecision(e) {
   box.append(el('h3', 'Choose the next path'), el('p', 'The reviewer agrees with every answer, but flagged quality concerns. You can run the review again, or continue with these saved warnings. Continuing does not make an OpenAI call.'));
   addButton(box, 'Continue with review warnings', continueWithReviewWarnings(e), 'secondary', isWorking(e));
   return box;
+}
+function selectionKey(e) { return `brain-booster-artwork-selection-${e.id}`; }
+function savedSelection(e) {
+  try {
+    const saved = JSON.parse(localStorage.getItem(selectionKey(e)) || 'null');
+    if (Array.isArray(saved)) return saved.filter(Number.isInteger);
+  } catch { /* Use every puzzle if browser storage is unavailable. */ }
+  return e.spec.puzzles.map((_, index) => index + 1);
+}
+function artworkSelection(e) {
+  if (!e.artworkReady || e.artworkSelectionFinalized) return null;
+  const section = el('section', null, 'artwork-selection');
+  section.append(el('h3', 'Choose puzzles for the video'), el('p', 'Keep the images you want. The next episode version will use only these puzzles for narration, voice, preview, and final video. This is local and makes no OpenAI call.'));
+  const selectedNumbers = new Set(savedSelection(e)); const choices = el('div', null, 'selection-list'); const count = el('p', null, 'selection-count');
+  const update = () => {
+    const values = [...selectedNumbers].sort((a, b) => a - b); localStorage.setItem(selectionKey(e), JSON.stringify(values));
+    count.textContent = `${values.length} of ${e.spec.puzzles.length} puzzles selected`;
+    button.disabled = busy || values.length === 0;
+  };
+  e.spec.puzzles.forEach((puzzle, index) => {
+    const number = index + 1; const label = el('label', null, 'selection-option'); const input = document.createElement('input'); input.type = 'checkbox'; input.checked = selectedNumbers.has(number);
+    input.onchange = () => { if (input.checked) selectedNumbers.add(number); else selectedNumbers.delete(number); update(); };
+    label.append(input, el('span', `Puzzle ${number}`, 'selection-number'), el('span', puzzle.title || puzzle.question, 'selection-title')); choices.append(label);
+  });
+  const button = addButton(section, 'Use selected puzzles', async () => {
+    if (busy) return;
+    busy = true; draw(); notice('Creating your selected puzzle episode…');
+    try {
+      const values = [...selectedNumbers].sort((a, b) => a - b);
+      episode = await request('/' + e.id + '/artwork-selection', 'POST', {puzzleNumbers:values});
+      selected = episode.id; location.hash = selected; step = firstOpenStep(episode);
+      localStorage.removeItem(selectionKey(e)); localStorage.setItem(`brain-booster-step-${episode.id}`, String(step));
+      notice('Selected puzzles are ready. Continue with narration when you are ready.');
+    } catch (error) { notice(error.message); }
+    finally { busy = false; draw(); }
+  }, 'primary');
+  section.append(choices, count, button); update(); return section;
 }
 function approvalChecklist(e) {
   const state = reviewState(e); const box = el('section', null, 'approval-checklist');
@@ -248,6 +285,7 @@ function artworkOutput(e, pane) {
   }); pane.append(grid);
   pane.append(el('p', 'The answer image automatically locates and circles the decisive clue during its animated reveal.', 'visual-note'));
   e.visualReviews?.forEach((review, index) => { const note = el('p', `Visual check ${index + 1}: ${review.notes || review.summary || 'completed'}`, 'visual-note'); pane.append(note); });
+  const selection = artworkSelection(e); if (selection) pane.append(selection);
 }
 function narrationOutput(e, pane) {
   outputTitle(pane, 'Generated result', 'Narration script');
@@ -302,6 +340,8 @@ function stagePane(e) {
     pane.append(actionPreflight(e, action));
     if (action[2] === 'approve') pane.append(approvalChecklist(e));
     addButton(pane, action[0], runAction(e, action), 'primary', action[2] === 'approve' && !reviewReady(e));
+  } else if (step === 2 && e.artworkReady && !e.artworkSelectionFinalized) {
+    pane.append(el('p', 'Inspect the artwork below, then choose the puzzles you want to keep for this video. Narration remains unavailable until you save that choice.', 'stage-description'));
   } else if (!e.finalReady && waitingMessage(e, step)) pane.append(el('p', waitingMessage(e, step), 'stage-description'));
   else if (e.finalReady && step === 8) pane.append(el('p', 'Your final video is ready to watch or download below.', 'stage-description'));
   const controls = el('div', null, 'stage-controls'); addButton(controls, 'Previous', () => setStep(step - 1), 'secondary', step === 0); addButton(controls, step === STEPS.length - 1 ? 'Back to first stage' : 'Next', () => setStep(step === STEPS.length - 1 ? 0 : step + 1), 'secondary'); pane.append(controls);
