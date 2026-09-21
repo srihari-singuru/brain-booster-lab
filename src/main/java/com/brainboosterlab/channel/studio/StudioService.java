@@ -84,6 +84,21 @@ class StudioService {
         return view(episode);
     }
 
+    /** Creates an exact script copy for changing a completed episode without overwriting its approved assets. */
+    synchronized View settingsRevision(UUID id, EpisodeSettings requestedSettings) {
+        requestedSettings.validate();
+        var source = find(id);
+        var sourceSpec = spec(source);
+        require(sourceSpec.puzzles().size() == requestedSettings.puzzleCount(),
+            "A settings revision keeps its existing puzzle count. Start a new episode to change the count.");
+        var revision = new StudioEpisode("Settings revision of " + id + ": " + source.brief);
+        revision.specJson = source.specJson;
+        revision.settingsJson = json.writeValueAsString(requestedSettings);
+        revision.scriptModel = "settings-revision (source: " + source.scriptModel + ")";
+        revision.status = "SCRIPT_REVIEW";
+        return view(repository.saveAndFlush(revision));
+    }
+
     synchronized View revise(UUID id, EpisodeSpec replacement) {
         replacement.validate();
         var source = find(id);

@@ -22,6 +22,8 @@ class StudioController {
     @PostMapping(consumes = "application/json") StudioService.View create(@Valid @RequestBody Brief brief) { return studio.create(brief.brief(), brief.settings()); }
     @PostMapping(value = "/{id}/settings", consumes = "application/json") StudioService.View settings(@PathVariable UUID id,
         @RequestBody EpisodeSettings settings) { return studio.settings(id, settings); }
+    @PostMapping(value = "/{id}/settings-revision", consumes = "application/json") StudioService.View settingsRevision(@PathVariable UUID id,
+        @RequestBody EpisodeSettings settings) { return studio.settingsRevision(id, settings); }
     @PostMapping(value = "/{id}/generate", consumes = "application/json") StudioService.View generate(@PathVariable UUID id) { return studio.generate(id); }
     @PostMapping(value = "/{id}/review", consumes = "application/json") StudioService.View review(@PathVariable UUID id) { return studio.review(id); }
     @PostMapping(value = "/{id}/narration", consumes = "application/json") StudioService.View narration(@PathVariable UUID id) { return studio.narration(id); }
