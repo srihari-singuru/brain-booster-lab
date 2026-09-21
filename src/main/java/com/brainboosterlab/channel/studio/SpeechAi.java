@@ -65,6 +65,10 @@ class SpeechAi {
     }
 
     Draft speak(EpisodeSpec spec, EpisodeNarration narration, Path directory, Profile profile) throws Exception {
+        return speak(spec, narration, directory, profile, "");
+    }
+
+    Draft speak(EpisodeSpec spec, EpisodeNarration narration, Path directory, Profile profile, String operatorDirection) throws Exception {
         narration.validate(spec);
         EpisodeSpec.require("live".equals(mode),
             "Speech is disabled because SPEECH_MODE resolves to mock. Set SPEECH_MODE=live and provide OPENAI_API_KEY.");
@@ -73,9 +77,9 @@ class SpeechAi {
         List<EpisodeSpeech.PuzzleSpeech> tracks = new ArrayList<>();
         for (int i = 0; i < spec.puzzles().size(); i++) {
             EpisodeNarration.PuzzleNarration beat = narration.puzzles().get(i);
-            double question = synthesize(beat.questionLeadIn(), directory.resolve("speech-question-" + i + ".wav"), questionDirection(), profile);
-            double timer = synthesize(beat.timerCue(), directory.resolve("speech-timer-" + i + ".wav"), timerDirection(), profile);
-            double reveal = synthesize(beat.revealExplanation(), directory.resolve("speech-reveal-" + i + ".wav"), revealDirection(), profile);
+            double question = synthesize(beat.questionLeadIn(), directory.resolve("speech-question-" + i + ".wav"), questionDirection() + operatorSuffix(operatorDirection), profile);
+            double timer = synthesize(beat.timerCue(), directory.resolve("speech-timer-" + i + ".wav"), timerDirection() + operatorSuffix(operatorDirection), profile);
+            double reveal = synthesize(beat.revealExplanation(), directory.resolve("speech-reveal-" + i + ".wav"), revealDirection() + operatorSuffix(operatorDirection), profile);
             tracks.add(new EpisodeSpeech.PuzzleSpeech(i + 1, question, timer, reveal));
         }
         EpisodeSpeech speech = new EpisodeSpeech(profile.model(), profile.voice(), tracks);
@@ -200,5 +204,8 @@ class SpeechAi {
     }
     private static String revealDirection() {
         return "Bright, expressive adult male storyteller for children ages 6 to 10. Make the answer feel like a cheerful aha moment: warmly celebrate the discovery, then clearly explain the proof. Natural English, a natural bright medium pitch, lively emphasis, and the same steady medium pace as the question narration. Do not speed up at the reveal, no baby talk, no flat delivery, and no exaggerated game-show shouting. Speak exactly the supplied words.";
+    }
+    private static String operatorSuffix(String direction) {
+        return direction == null || direction.isBlank() ? "" : " Additional operator direction: " + direction.trim();
     }
 }

@@ -50,6 +50,10 @@ class NarrationAi {
     }
 
     Draft write(EpisodeSpec spec, String requestedModel) {
+        return write(spec, requestedModel, "");
+    }
+
+    Draft write(EpisodeSpec spec, String requestedModel, String operatorDirection) {
         String activeModel = requestedModel == null || requestedModel.isBlank() ? model : requestedModel.trim();
         if (!"live".equals(mode)) return new Draft(fixture(spec), "local-fixture", "none");
         String prompt = """
@@ -77,7 +81,7 @@ class NarrationAi {
             - No headings, timestamps, stage directions, sound effects, markdown, or text intended to appear on art.
 
             Return the required structured object. Episode specification:
-            """ + json.writeValueAsString(spec);
+            """ + json.writeValueAsString(spec) + operatorSuffix(operatorDirection);
         var response = client.responses().create(ResponseCreateParams.builder().model(activeModel).input(prompt)
             .store(false).reasoning(Reasoning.builder().effort(ReasoningEffort.HIGH).build())
             .maxOutputTokens(7000).text(EpisodeNarration.class).build());
@@ -93,6 +97,10 @@ class NarrationAi {
     }
 
     Review review(EpisodeSpec spec, EpisodeNarration narration, String requestedModel) {
+        return review(spec, narration, requestedModel, "");
+    }
+
+    Review review(EpisodeSpec spec, EpisodeNarration narration, String requestedModel, String operatorDirection) {
         String activeModel = requestedModel == null || requestedModel.isBlank() ? model : requestedModel.trim();
         if (!"live".equals(mode)) return new Review(java.util.stream.IntStream.range(0, spec.puzzles().size())
             .mapToObj(i -> new Finding(i + 1, true, true, true, true,
@@ -107,7 +115,7 @@ class NarrationAi {
             familySafe is true only for warm, age-appropriate language with no pressure, shame, fear, stereotypes or
             unsafe claims. Be adversarial: reject generic filler and ambiguous proof. Put concise actionable feedback
             in notes. Do not rubber-stamp.
-            Specification: """ + json.writeValueAsString(spec) + "\nNarration: " + json.writeValueAsString(narration);
+            Specification: """ + json.writeValueAsString(spec) + "\nNarration: " + json.writeValueAsString(narration) + operatorSuffix(operatorDirection);
         var response = client.responses().create(ResponseCreateParams.builder().model(activeModel).input(prompt)
             .store(false).reasoning(Reasoning.builder().effort(ReasoningEffort.HIGH).build())
             .maxOutputTokens(7000).text(Review.class).build());
@@ -122,6 +130,10 @@ class NarrationAi {
     }
 
     GroundedDraft ground(EpisodeSpec spec, EpisodeNarration narration, List<Path> frames, String requestedModel) throws Exception {
+        return ground(spec, narration, frames, requestedModel, "");
+    }
+
+    GroundedDraft ground(EpisodeSpec spec, EpisodeNarration narration, List<Path> frames, String requestedModel, String operatorDirection) throws Exception {
         String activeModel = requestedModel == null || requestedModel.isBlank() ? model : requestedModel.trim();
         EpisodeSpec.require(frames != null && frames.size() == spec.puzzles().size(), "Grounding needs every completed question frame");
         if (!"live".equals(mode)) {
@@ -146,7 +158,7 @@ class NarrationAi {
             false, explain the mismatch, and keep the narration conservative. Each notes field must be one or two short sentences, under 300 characters. Return the complete structured
             NarrationGrounding object with one finding per image in order.
 
-            Puzzle specification: """ + json.writeValueAsString(spec) + "\nProposed narration: " + json.writeValueAsString(narration);
+            Puzzle specification: """ + json.writeValueAsString(spec) + "\nProposed narration: " + json.writeValueAsString(narration) + operatorSuffix(operatorDirection);
         var content = new java.util.ArrayList<ResponseInputContent>();
         content.add(ResponseInputContent.ofInputText(ResponseInputText.builder().text(prompt).build()));
         for (Path frame : frames) content.add(ResponseInputContent.ofInputImage(ResponseInputImage.builder()
@@ -173,5 +185,9 @@ class NarrationAi {
         }).toList();
         return new EpisodeNarration("Welcome to Brain Booster Lab, where every small clue can spark a brilliant idea.",
             beats, "Wonderful thinking today. Keep noticing the little details, and come back for another cheerful puzzle.");
+    }
+
+    private static String operatorSuffix(String direction) {
+        return direction == null || direction.isBlank() ? "" : "\n\nOperator direction for this stage (honor it unless it conflicts with safety or required output format):\n" + direction.trim();
     }
 }

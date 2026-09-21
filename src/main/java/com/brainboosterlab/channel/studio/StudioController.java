@@ -16,8 +16,10 @@ class StudioController {
     record BriefUpdate(@NotBlank @Size(max = 4000) String brief) {}
     record RestyleOptions(List<SceneOverlay.Region> clueRegions) {}
     private final StudioService studio;
-    StudioController(StudioService studio) { this.studio = studio; }
+    private final OpenAiModelCatalog models;
+    StudioController(StudioService studio, OpenAiModelCatalog models) { this.studio = studio; this.models = models; }
     @GetMapping List<StudioService.View> list() { return studio.list(); }
+    @GetMapping("/models") OpenAiModelCatalog.Catalog models() { return models.list(); }
     @GetMapping("/{id}") StudioService.View get(@PathVariable UUID id) { return studio.get(id); }
     // JSON-only mutations reject cross-site HTML form submissions; no CORS access is granted.
     @PostMapping(consumes = "application/json") StudioService.View create(@Valid @RequestBody Brief brief) { return studio.create(brief.brief(), brief.settings()); }
@@ -25,6 +27,8 @@ class StudioController {
         @Valid @RequestBody BriefUpdate brief) { return studio.updateBrief(id, brief.brief()); }
     @PostMapping(value = "/{id}/settings", consumes = "application/json") StudioService.View settings(@PathVariable UUID id,
         @RequestBody EpisodeSettings settings) { return studio.settings(id, settings); }
+    @PostMapping(value = "/{id}/stage-instructions", consumes = "application/json") StudioService.View stageInstructions(@PathVariable UUID id,
+        @RequestBody StageInstructions instructions) { return studio.stageInstructions(id, instructions); }
     @PostMapping(value = "/{id}/settings-revision", consumes = "application/json") StudioService.View settingsRevision(@PathVariable UUID id,
         @RequestBody EpisodeSettings settings) { return studio.settingsRevision(id, settings); }
     @PostMapping(value = "/{id}/generate", consumes = "application/json") StudioService.View generate(@PathVariable UUID id) { return studio.startGenerate(id); }

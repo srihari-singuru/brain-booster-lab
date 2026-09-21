@@ -201,14 +201,15 @@ final class KidsFrameRenderer {
     private static void drawClue(Graphics2D g, java.awt.geom.Rectangle2D b, double time, Rectangle badge) {
         double progress = Math.max(0, Math.min(1, time / .8));
         if (progress == 0) return;
-        double pulse = 1 + .08 * Math.sin(Math.PI * Math.min(1, time / 1.2));
-        double cx = b.getCenterX(), cy = b.getCenterY(), w = b.getWidth() * pulse, h = b.getHeight() * pulse;
-        var ring = new java.awt.geom.Rectangle2D.Double(cx - w / 2, cy - h / 2, w, h);
-        // Keep the clue pixels readable; the glow is an outline, never an opaque spotlight over evidence.
-        g.setColor(new Color(255, 221, 56, 130)); g.setStroke(new BasicStroke(30, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        double pulse = 1 + .10 * Math.sin(Math.PI * Math.min(1, time / 1.2));
+        double cx = b.getCenterX(), cy = b.getCenterY();
+        double diameter = Math.max(b.getWidth(), b.getHeight()) * 1.22 * pulse;
+        var ring = new java.awt.geom.Rectangle2D.Double(cx - diameter / 2, cy - diameter / 2, diameter, diameter);
+        // A generous, circular double halo reads instantly on a phone while leaving the clue pixels unobscured.
+        g.setColor(new Color(255, 221, 56, 105)); g.setStroke(new BasicStroke(36, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
         g.draw(new java.awt.geom.Ellipse2D.Double(ring.getX(), ring.getY(), ring.getWidth(), ring.getHeight()));
         var arc = new java.awt.geom.Arc2D.Double(ring, 90, -360 * progress, java.awt.geom.Arc2D.OPEN);
-        g.setStroke(new BasicStroke(22, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g.setStroke(new BasicStroke(24, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
         g.setColor(new Color(12, 20, 34, 220)); g.draw(arc);
         g.setStroke(new BasicStroke(12, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
         g.setColor(YELLOW); g.draw(arc);

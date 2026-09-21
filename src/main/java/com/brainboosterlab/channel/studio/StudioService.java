@@ -22,7 +22,7 @@ class StudioService {
     record View(UUID id, String brief, String status, EpisodeSpec spec, StudioAi.Review review,
                 EpisodeNarration narration, NarrationAi.Review narrationReview, NarrationGrounding narrationGrounding, EpisodeSpeech speech,
                 String lastError, String scriptModel, String responseId, String narrationModel, String narrationResponseId,
-                String narrationGroundingModel, String speechModel, String speechVoice, EpisodeSettings settings, Instant approvedAt, boolean artworkReady,
+                String narrationGroundingModel, String speechModel, String speechVoice, EpisodeSettings settings, StageInstructions stageInstructions, Instant approvedAt, boolean artworkReady,
                 List<StudioAi.VisualReview> visualReviews, boolean previewReady, boolean finalReady, boolean speechReady) {}
     private final StudioRepository repository;
     private final StudioAi ai;
@@ -135,6 +135,17 @@ class StudioService {
         return view(episode);
     }
 
+    synchronized View stageInstructions(UUID id, StageInstructions requested) {
+        var episode = find(id);
+        require(!active(episode.status), "This episode is already working in the background");
+        require(episode.approvedAt == null, "Approved episodes are immutable; create a settings version to change directions");
+        StageInstructions instructions = requested == null ? StageInstructions.EMPTY : requested;
+        instructions.validate();
+        episode.stageInstructionsJson = json.writeValueAsString(instructions);
+        save(episode);
+        return view(episode);
+    }
+
     /** Creates an exact script copy for changing a completed episode without overwriting its approved assets. */
     synchronized View settingsRevision(UUID id, EpisodeSettings requestedSettings) {
         requestedSettings.validate();
@@ -235,7 +246,10 @@ class StudioService {
         stage(e, "GENERATING");
         try {
             var production = settings(e);
-            var draft = production.equals(defaults) ? ai.generate(e.brief) : ai.generate(e.brief, production.puzzleCount(), production.textModel());
+            String direction = stageInstructions(e).forAction("generate");
+            var draft = direction.isBlank()
+                ? (production.equals(defaults) ? ai.generate(e.brief) : ai.generate(e.brief, production.puzzleCount(), production.textModel()))
+                : ai.generate(e.brief, production.puzzleCount(), production.textModel(), direction);
             e.specJson = json.writeValueAsString(draft.spec());
             e.scriptModel = draft.model(); e.responseId = draft.responseId();
             // Each production step is an explicit user decision. Preserve the generated script
@@ -252,7 +266,7 @@ class StudioService {
         stage(e, "REVIEWING");
         try {
             var production = settings(e);
-            var review = production.equals(defaults) ? ai.review(spec) : ai.review(spec, production.textModel());
+            var review = ai.review(spec, production.textModel(), stageInstructions(e).forAction("review"));
             e.reviewJson = json.writeValueAsString(review);
             stage(e, review.passes(spec) ? "SCRIPT_REVIEW" : "CHANGES_NEEDED");
             return view(e);
@@ -267,13 +281,18 @@ class StudioService {
         stage(e, "NARRATING");
         try {
             var production = settings(e);
-            var draft = production.equals(defaults) ? narrator.write(spec) : narrator.write(spec, production.narrationModel());
+            String direction = stageInstructions(e).forAction("narration");
+            var draft = direction.isBlank()
+                ? (production.equals(defaults) ? narrator.write(spec) : narrator.write(spec, production.narrationModel()))
+                : narrator.write(spec, production.narrationModel(), direction);
             draft.narration().validate(spec);
             e.narrationJson = json.writeValueAsString(draft.narration());
             e.narrationModel = draft.model(); e.narrationResponseId = draft.responseId();
             e.narrationGroundingJson = null; e.narrationGroundingModel = null; e.narrationGroundingResponseId = null;
             e.speechJson = null; e.speechModel = null; e.speechVoice = null;
-            var review = production.equals(defaults) ? narrator.review(spec, draft.narration()) : narrator.review(spec, draft.narration(), production.narrationModel());
+            var review = direction.isBlank()
+                ? (production.equals(defaults) ? narrator.review(spec, draft.narration()) : narrator.review(spec, draft.narration(), production.narrationModel()))
+                : narrator.review(spec, draft.narration(), production.narrationModel(), direction);
             e.narrationReviewJson = json.writeValueAsString(review);
             if (production.equals(defaults)) renderer.writeNarration(spec, draft.narration(), directory(id));
             else renderer.writeNarration(spec, draft.narration(), directory(id), production.channelName());
@@ -294,7 +313,7 @@ class StudioService {
         stage(e, "NARRATION_GROUNDING");
         try {
             var production = settings(e);
-            var draft = production.equals(defaults) ? narrator.ground(spec, narration, frames) : narrator.ground(spec, narration, frames, production.narrationModel());
+            var draft = narrator.ground(spec, narration, frames, production.narrationModel(), stageInstructions(e).forAction("ground-narration"));
             draft.grounding().validate(spec);
             e.narrationGroundingJson = json.writeValueAsString(draft.grounding());
             e.narrationGroundingModel = draft.model(); e.narrationGroundingResponseId = draft.responseId();
@@ -321,8 +340,7 @@ class StudioService {
             for (int i = 0; i < spec.puzzles().size(); i++) {
                 // Retrying a clue-analysis failure preserves the already purchased local artwork.
                 if (!Files.isRegularFile(dir.resolve("art-" + i + ".png"))) {
-                    if (production.equals(defaults)) ai.artwork(spec.puzzles().get(i), dir, i);
-                    else ai.artwork(spec.puzzles().get(i), dir, i, production.imageModel());
+                    ai.artwork(spec.puzzles().get(i), dir, i, production.imageModel(), stageInstructions(e).forAction("artwork"));
                 }
             }
             renderer.previews(spec, dir, production.channelName());
@@ -389,7 +407,7 @@ class StudioService {
         try {
             var production = settings(e);
             var profile = new SpeechAi.Profile(production.speechModel(), production.speechVoice(), production.speechSpeed());
-            var draft = recoverExisting ? speaker.recoverExisting(spec, directory(id)) : speaker.speak(spec, narration, directory(id), profile);
+            var draft = recoverExisting ? speaker.recoverExisting(spec, directory(id)) : speaker.speak(spec, narration, directory(id), profile, stageInstructions(e).forAction("speech"));
             draft.speech().validate(spec);
             renderer.writeSpeechTrack(spec, draft.speech(), directory(id));
             e.speechJson = json.writeValueAsString(draft.speech());
@@ -468,6 +486,12 @@ class StudioService {
         settings.validate();
         return settings;
     }
+    private StageInstructions stageInstructions(StudioEpisode e) {
+        if (e.stageInstructionsJson == null || e.stageInstructionsJson.isBlank()) return StageInstructions.EMPTY;
+        var instructions = json.readValue(e.stageInstructionsJson, StageInstructions.class);
+        instructions.validate();
+        return instructions;
+    }
     private boolean reviewPasses(StudioEpisode e, EpisodeSpec spec) {
         return e.reviewJson != null && json.readValue(e.reviewJson, StudioAi.Review.class).passes(spec);
     }
@@ -534,7 +558,7 @@ class StudioService {
             e.narrationJson == null ? null : json.readValue(e.narrationJson, EpisodeNarration.class),
             e.narrationReviewJson == null ? null : json.readValue(e.narrationReviewJson, NarrationAi.Review.class),
             e.narrationGroundingJson == null ? null : json.readValue(e.narrationGroundingJson, NarrationGrounding.class), speech, e.lastError,
-            e.scriptModel, e.responseId, e.narrationModel, e.narrationResponseId, e.narrationGroundingModel, e.speechModel, e.speechVoice, settings(e),
+            e.scriptModel, e.responseId, e.narrationModel, e.narrationResponseId, e.narrationGroundingModel, e.speechModel, e.speechVoice, settings(e), stageInstructions(e),
             e.approvedAt, ready, reviews, Files.isRegularFile(dir.resolve("preview.mp4")), Files.isRegularFile(dir.resolve("final.mp4")), speechReady);
     }
     private View safeView(StudioEpisode episode) {
@@ -546,7 +570,7 @@ class StudioService {
             return new View(episode.id, episode.brief, "FAILED", null, null, null, null, null, null,
                 "This older saved episode no longer matches the current puzzle format. Its files are retained, but create a new episode to continue.",
                 episode.scriptModel, episode.responseId, episode.narrationModel, episode.narrationResponseId,
-                episode.narrationGroundingModel, episode.speechModel, episode.speechVoice, savedSettings, episode.approvedAt,
+                episode.narrationGroundingModel, episode.speechModel, episode.speechVoice, savedSettings, StageInstructions.EMPTY, episode.approvedAt,
                 false, List.of(), false, false, false);
         }
     }

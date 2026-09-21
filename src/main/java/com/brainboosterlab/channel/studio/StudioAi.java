@@ -75,6 +75,10 @@ class StudioAi {
     }
 
     Draft generate(String brief, int puzzleCount, String requestedModel) {
+        return generate(brief, puzzleCount, requestedModel, "");
+    }
+
+    Draft generate(String brief, int puzzleCount, String requestedModel, String operatorDirection) {
         EpisodeSpec.require(puzzleCount >= 1 && puzzleCount <= 10, "Choose between 1 and 10 puzzles");
         String activeModel = requestedModel == null || requestedModel.isBlank() ? model : requestedModel.trim();
         if (!"live".equals(generationMode)) return new Draft(PilotFixtures.kids(), "local-fixture", "none");
@@ -118,7 +122,7 @@ class StudioAi {
             neon skin, plastic 3D rendering or visual noise. Do not copy channel characters or designs.
             thinkSeconds10–15.
             Original creative brief follows:
-            """.formatted(puzzleCount) + brief;
+            """.formatted(puzzleCount) + brief + operatorSuffix(operatorDirection);
         var response = client.responses().create(ResponseCreateParams.builder().model(activeModel).input(prompt)
             .store(false).reasoning(Reasoning.builder().effort(ReasoningEffort.HIGH).build())
             .maxOutputTokens(12000).text(EpisodeSpec.class).build());
@@ -135,6 +139,10 @@ class StudioAi {
     }
 
     Review review(EpisodeSpec spec, String requestedModel) {
+        return review(spec, requestedModel, "");
+    }
+
+    Review review(EpisodeSpec spec, String requestedModel, String operatorDirection) {
         String activeModel = requestedModel == null || requestedModel.isBlank() ? model : requestedModel.trim();
         if (!"live".equals(generationMode)) return new Review(java.util.stream.IntStream.range(0,spec.puzzles().size())
             .mapToObj(i -> new Finding(i+1,spec.puzzles().get(i).answerId(),true,
@@ -150,7 +158,8 @@ class StudioAi {
             + "scene, checking one visible clue and one simple inference appropriate to ages 6–10; reject homework-like "
             + "reasoning, unsafe stereotypes and unstated supernatural rules. This is only a concept check; an actual-image "
             + "blind visual check follows later. Judge family suitability. "
-            + "This is an adversarial review, not a request to endorse. Questions: " + json.writeValueAsString(questions);
+            + "This is an adversarial review, not a request to endorse. Questions: " + json.writeValueAsString(questions)
+            + operatorSuffix(operatorDirection);
         var response = client.responses().create(ResponseCreateParams.builder().model(activeModel).input(prompt)
             .store(false).reasoning(Reasoning.builder().effort(ReasoningEffort.HIGH).build())
             .maxOutputTokens(10000).text(Review.class).build());
@@ -163,6 +172,10 @@ class StudioAi {
     }
 
     void artwork(EpisodeSpec.Puzzle puzzle, Path directory, int index, String requestedImageModel) throws Exception {
+        artwork(puzzle, directory, index, requestedImageModel, "");
+    }
+
+    void artwork(EpisodeSpec.Puzzle puzzle, Path directory, int index, String requestedImageModel, String operatorDirection) throws Exception {
         String activeImageModel = requestedImageModel == null || requestedImageModel.isBlank() ? imageModel : requestedImageModel.trim();
         String prompt = """
             Create one premium 16:9 landscape editorial illustration for an original family reasoning show.
@@ -196,7 +209,8 @@ class StudioAi {
             watermarks, arrows, rings or answer highlights. No plastic 3D or preschool clip-art.
             The following scene plan is authoritative, especially its shadows/reflections/robot details:
             """ + puzzle.sceneDescription();
-        prompt += "\nFinal lettering constraint: do NOT draw A/B/C badges or any text, even if the scene brief mentions them. The application alone adds those labels.";
+        prompt += "\nFinal lettering constraint: do NOT draw A/B/C badges or any text, even if the scene brief mentions them. The application alone adds those labels."
+            + operatorSuffix(operatorDirection);
         Path artwork = directory.resolve("art-" + index + ".png");
         if (Files.exists(artwork)) return; // Paid output is immutable and reused on retries/renders.
         if (!"live".equals(artworkMode)) {
@@ -300,5 +314,9 @@ class StudioAi {
             .flatMap(c -> c.outputText().stream()).findFirst().orElseThrow();
         return new VisualReview(solution.clearForKids() && puzzle.answerId().equals(solution.answerId()),
             "Blind image solver chose " + solution.answerId() + ". Visible clue: " + solution.observedClue() + " " + solution.issues());
+    }
+
+    private static String operatorSuffix(String direction) {
+        return direction == null || direction.isBlank() ? "" : "\n\nOperator direction for this stage (honor it unless it conflicts with safety or required output format):\n" + direction.trim();
     }
 }

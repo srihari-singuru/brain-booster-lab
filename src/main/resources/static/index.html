@@ -23,12 +23,12 @@
         <label>NUMBER OF PUZZLES<input id="puzzle-count" type="number" min="1" max="10" step="1" value="3" required></label>
         <label>CREATIVE PROMPT<textarea id="brief" required maxlength="4000" rows="8">Picture-first mini-mysteries for ages 6–10 watching with family. Three characters, one visible clue, a short question, and a satisfying guess. Friendly fantasy or robot surprises in everyday scenes. First puzzle builds confidence; later puzzles are slightly less obvious. No arithmetic, number patterns, long rules or tiny objects. Keep polished illustrations and warm, energetic storytelling.</textarea></label>
         <details class="advanced"><summary>Production settings</summary><div class="setting-grid">
-          <label>TEXT MODEL<input id="text-model" required maxlength="120"></label>
-          <label>IMAGE MODEL<input id="image-model" required maxlength="120"></label>
-          <label>NARRATION MODEL<input id="narration-model" required maxlength="120"></label>
-          <label>SPEECH MODEL<input id="speech-model" required maxlength="120" value="gpt-4o-mini-tts"></label>
+          <label>TEXT MODEL<select id="text-model" required></select></label>
+          <label>IMAGE MODEL<select id="image-model" required></select></label>
+          <label>NARRATION MODEL<select id="narration-model" required></select></label>
+          <label>SPEECH MODEL<select id="speech-model" required></select></label>
           <label>VOICE<select id="speech-voice"><option>cedar</option><option>marin</option><option>alloy</option><option>ash</option><option>ballad</option><option>coral</option><option>echo</option><option>fable</option><option>nova</option><option>onyx</option><option>sage</option><option>shimmer</option><option>verse</option></select></label>
-          <label>VOICE SPEED<input id="speech-speed" type="number" min="0.75" max="1.25" step="0.01" value="1.00"></label>
+          <label>VOICE SPEED<select id="speech-speed"><option value="0.85">0.85×</option><option value="0.90">0.90×</option><option value="0.95">0.95×</option><option value="1" selected>1.00×</option><option value="1.05">1.05×</option><option value="1.10">1.10×</option></select></label>
         </div><p class="privacy-note">Your API key stays in your local <code>.env</code>.</p></details>
         <button type="submit" class="primary wide">Create episode</button>
     </form>

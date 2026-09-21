@@ -8,6 +8,7 @@ const STEPS = [
 ];
 let selected = location.hash.slice(1), episode = null, busy = false, step = 0;
 let defaultSettings = {channelName:'BRAIN BOOSTER LAB', puzzleCount:3, textModel:'gpt-4o-mini', imageModel:'gpt-image-1', narrationModel:'gpt-4o-mini', speechModel:'gpt-4o-mini-tts', speechVoice:'cedar', speechSpeed:1};
+let modelCatalog = {text:['gpt-6-astra','gpt-5.6-sol','gpt-5.6-terra'],image:['gpt-image-2'],speech:['gpt-4o-mini-tts'],voices:['cedar','marin','alloy','ash','ballad','coral','echo','fable','nova','onyx','sage','shimmer','verse'],live:false};
 const by = id => document.querySelector('#' + id);
 const el = (tag, text, className) => { const node = document.createElement(tag); if (text != null) node.textContent = text; if (className) node.className = className; return node; };
 const settings = e => e?.settings || defaultSettings;
@@ -31,18 +32,27 @@ async function request(path, method = 'POST', body) {
   if (!response.ok) throw new Error(data.detail || data.message || 'Request failed');
   return data;
 }
+function choices(values, current) { return [...new Set([...(values || []), current].filter(Boolean))]; }
+function fillSelect(input, values, current, format = value => value) { if (!input) return; input.replaceChildren(); choices(values, current).forEach(value => { const option = el('option', format(value)); option.value = value; option.selected = value === current; input.append(option); }); }
 function fillSettings(s) {
   for (const [id, key] of [['channel-name','channelName'], ['puzzle-count','puzzleCount'], ['text-model','textModel'], ['image-model','imageModel'], ['narration-model','narrationModel'], ['speech-model','speechModel'], ['speech-voice','speechVoice'], ['speech-speed','speechSpeed']]) {
-    const input = by(id); if (input) input.value = s[key];
+    const input = by(id); if (!input) continue;
+    if (key === 'textModel' || key === 'narrationModel') fillSelect(input, modelCatalog.text, s[key]);
+    else if (key === 'imageModel') fillSelect(input, modelCatalog.image, s[key]);
+    else if (key === 'speechModel') fillSelect(input, modelCatalog.speech, s[key]);
+    else if (key === 'speechVoice') fillSelect(input, modelCatalog.voices, s[key]);
+    else if (key === 'speechSpeed') fillSelect(input, [.85,.9,.95,1,1.05,1.1].map(String), String(s[key]), value => `${Number(value).toFixed(2)}×`);
+    else input.value = s[key];
   }
 }
 function readSettings(host = document) {
   const get = key => host.querySelector(`[data-setting="${key}"]`) || host.querySelector('#' + ({channelName:'channel-name',puzzleCount:'puzzle-count',textModel:'text-model',imageModel:'image-model',narrationModel:'narration-model',speechModel:'speech-model',speechVoice:'speech-voice',speechSpeed:'speech-speed'}[key]));
-  return {channelName:get('channelName').value.trim(), puzzleCount:Number(get('puzzleCount').value), textModel:get('textModel').value.trim(), imageModel:get('imageModel').value.trim(), narrationModel:get('narrationModel').value.trim(), speechModel:get('speechModel').value.trim(), speechVoice:get('speechVoice').value, speechSpeed:Number(get('speechSpeed').value)};
+  return {channelName:get('channelName')?.value.trim() || host.dataset.channelName || defaultSettings.channelName, puzzleCount:Number(get('puzzleCount').value), textModel:get('textModel').value.trim(), imageModel:get('imageModel').value.trim(), narrationModel:get('narrationModel').value.trim(), speechModel:get('speechModel').value.trim(), speechVoice:get('speechVoice').value, speechSpeed:Number(get('speechSpeed').value)};
 }
 async function load() {
   try {
-    const all = await fetch(api).then(r => r.json());
+    const [all, catalog] = await Promise.all([fetch(api).then(r => r.json()), fetch(api + '/models').then(r => r.ok ? r.json() : modelCatalog)]);
+    modelCatalog = catalog || modelCatalog;
     if (all[0]?.settings) { defaultSettings = all[0].settings; fillSettings(defaultSettings); }
     episode = selected ? await fetch(`${api}/${selected}`).then(r => r.json()) : null;
     if (episode) step = savedStep(episode);
@@ -78,46 +88,51 @@ function waitingMessage(e, index) {
   const requirements = [null, 'Generate puzzles first.', 'Pass the puzzle review before creating artwork.', 'Generate artwork before narration.', 'Generate narration and artwork before grounding.', 'Pass narration grounding before creating voice.', 'Generate voice before rendering a preview.', 'Render a preview before approval.', 'Approve the episode before final rendering.'];
   return requirements[index];
 }
+function instructionKey(action) { return ({generate:'generate',review:'review',artwork:'artwork',narration:'narration','ground-narration':'grounding',speech:'speech'})[action]; }
+function basePromptLabel(action) {
+  return ({generate:'Create picture-first family mini-mysteries from the creative prompt and the selected puzzle count.',review:'Independently check fairness, age fit, and whether every answer has one clear proof.',artwork:'Create polished 16:9 illustrations that show one large, fair visual clue with no text in the art.',narration:'Write an energetic but natural story-led voice-over grounded in the reviewed puzzles.', 'ground-narration':'Compare the narration against the finished question frames and correct only what the image proves.',speech:'Perform the approved narration with the selected OpenAI voice and speed.'})[action] || '';
+}
+function stageDirection(e, action) {
+  const key = instructionKey(action); if (!key) return null;
+  const box = el('section', null, 'prompt-card'); box.append(el('p', 'AI prompt for this stage', 'output-kicker'), el('p', basePromptLabel(action), 'prompt-summary'));
+  const label = el('label', 'ADDITIONAL DIRECTION — OPTIONAL'); const area = document.createElement('textarea'); area.id = 'stage-instruction'; area.rows = 4; area.maxLength = 3000; area.placeholder = 'Add a direction for this run, for example: “Make the first puzzle a cheerful garden mystery.”'; area.value = e.stageInstructions?.[key] || ''; label.append(area); box.append(label, el('p', 'This text is saved and appended to the protected production prompt when you click the stage button.', 'prompt-note')); return box;
+}
 function runAction(e, action) {
   return async () => {
-    busy = true; draw(); notice(action[0] + ' started.');
-    try { episode = await request('/' + e.id + '/' + action[2]); notice('Working in the background. This page updates automatically.'); }
+    const setup = by('episode-settings'); const direction = by('stage-instruction')?.value || ''; const creativePrompt = setup?.querySelector('textarea')?.value;
+    busy = true; draw(); notice('Saving this run’s settings…');
+    try {
+      let prepared = e;
+      if (!e.approvedAt && setup) prepared = await request('/' + e.id + '/settings', 'POST', readSettings(setup));
+      if (!e.spec && creativePrompt?.trim()) prepared = await request('/' + prepared.id + '/brief', 'PUT', {brief:creativePrompt.trim()});
+      const key = instructionKey(action[2]);
+      if (!e.approvedAt && key) { const instructions = {...(prepared.stageInstructions || {generate:'',review:'',artwork:'',narration:'',grounding:'',speech:''}), [key]:direction}; prepared = await request('/' + prepared.id + '/stage-instructions', 'POST', instructions); }
+      episode = await request('/' + prepared.id + '/' + action[2]); notice('Working in the background. This page updates automatically.');
+    }
     catch (error) { notice(error.message); }
     finally { busy = false; draw(); }
   };
 }
 function buildSettings(e) {
-  const section = el('section', null, 'settings-top');
-  section.append(el('p', 'Episode settings', 'section-label'), el('h2', settings(e).channelName));
+  const section = el('section', null, 'settings-top'); section.id = 'episode-settings'; section.dataset.channelName = settings(e).channelName;
+  const head = el('div', null, 'settings-heading'); head.append(el('div', null, 'channel-lock')); head.firstChild.append(el('p', 'Channel', 'section-label'), el('h2', settings(e).channelName)); head.append(el('p', modelCatalog.live ? 'Models refreshed from your OpenAI account' : 'Using saved model options — refresh after API access is available', 'catalog-status')); section.append(head);
   const grid = el('div', null, 'settings-grid');
-  const fields = [['Channel name','channelName','text'], ['Puzzle count','puzzleCount','number'], ['Text model','textModel','text'], ['Image model','imageModel','text'], ['Narration model','narrationModel','text'], ['Speech model','speechModel','text'], ['Voice','speechVoice','select'], ['Voice speed','speechSpeed','number']];
+  const fields = [['Puzzle count','puzzleCount','number'], ['Text model','textModel','text'], ['Image model','imageModel','image'], ['Narration model','narrationModel','text'], ['Speech model','speechModel','speech'], ['Voice','speechVoice','voice'], ['Voice speed','speechSpeed','speed']];
   for (const [label, key, type] of fields) {
     const wrap = el('label', label.toUpperCase()); let input;
-    if (type === 'select') { input = document.createElement('select'); for (const voice of ['cedar','marin','alloy','ash','ballad','coral','echo','fable','nova','onyx','sage','shimmer','verse']) { const option = el('option', voice); option.value = voice; option.selected = voice === settings(e)[key]; input.append(option); } }
-    else { input = document.createElement('input'); input.type = type; input.value = settings(e)[key]; }
-    input.dataset.setting = key; if (key === 'puzzleCount') { input.min = 1; input.max = 10; input.step = 1; input.disabled = !!e.spec || isWorking(e); }
-    if (key === 'speechSpeed') { input.min = .75; input.max = 1.25; input.step = .01; }
-    if (isWorking(e)) input.disabled = true;
-    wrap.append(input); grid.append(wrap);
+    if (type === 'number') { input = document.createElement('input'); input.type = 'number'; input.value = settings(e)[key]; input.min = 1; input.max = 10; input.step = 1; input.disabled = !!e.spec || isWorking(e); }
+    else { input = document.createElement('select'); const source = type === 'image' ? modelCatalog.image : type === 'speech' ? modelCatalog.speech : type === 'voice' ? modelCatalog.voices : type === 'speed' ? [.85,.9,.95,1,1.05,1.1].map(String) : modelCatalog.text; fillSelect(input, source, String(settings(e)[key]), type === 'speed' ? value => `${Number(value).toFixed(2)}×` : value => value); }
+    input.dataset.setting = key; if (isWorking(e)) input.disabled = true; wrap.append(input); grid.append(wrap);
   }
   section.append(grid);
-  const controls = el('div', null, 'settings-controls');
-  addButton(controls, e.approvedAt ? 'Create settings version' : 'Save settings', async () => {
-    busy = true; draw(); try {
-      const updated = await request('/' + e.id + (e.approvedAt ? '/settings-revision' : '/settings'), 'POST', readSettings(section));
-      selected = updated.id; location.hash = selected; episode = updated; step = savedStep(updated); notice(e.approvedAt ? 'A settings version was created.' : 'Settings saved.');
-    } catch (error) { notice(error.message); } finally { busy = false; draw(); }
-  }, 'secondary', isWorking(e));
-  if (!e.spec) addButton(controls, 'Save prompt', async () => {
-    const prompt = section.querySelector('textarea'); if (!prompt) return; busy = true; draw(); try { episode = await request('/' + e.id + '/brief', 'PUT', {brief:prompt.value}); notice('Prompt saved.'); } catch (error) { notice(error.message); } finally { busy = false; draw(); }
-  }, 'secondary', isWorking(e));
-  section.append(controls);
+  const controls = el('div', null, 'settings-controls'); addButton(controls, e.approvedAt ? 'Create settings version' : 'Save settings', async () => { busy = true; draw(); try { const updated = await request('/' + e.id + (e.approvedAt ? '/settings-revision' : '/settings'), 'POST', readSettings(section)); selected = updated.id; location.hash = selected; episode = updated; step = savedStep(updated); notice(e.approvedAt ? 'A settings version was created.' : 'Settings saved.'); } catch (error) { notice(error.message); } finally { busy = false; draw(); } }, 'secondary', isWorking(e)); section.append(controls);
   if (!e.spec) { const label = el('label', 'CREATIVE PROMPT', 'prompt-top'); const area = document.createElement('textarea'); area.value = e.brief; area.maxLength = 4000; area.rows = 4; label.append(area); section.append(label); }
   return section;
 }
 function buildNavigation(e) {
   const nav = el('nav', null, 'wizard-nav'); nav.setAttribute('aria-label', 'Episode stages');
-  STEPS.forEach(([id, label], index) => { const button = el('button', null, `stage-tab${index === step ? ' active' : ''}`); button.type = 'button'; button.append(el('span', String(index + 1), 'stage-number'), el('span', label)); button.onclick = () => setStep(index); nav.append(button); });
+  const open = firstOpenStep(e); const running = {GENERATING:0, REVIEWING:1, PREPARING_ART:2, NARRATING:3, NARRATION_GROUNDING:4, SPEAKING:5, RENDERING:e.approvedAt ? 8 : 6}[e.status];
+  STEPS.forEach(([id, label], index) => { const state = index < open ? 'complete' : index === (running ?? open) ? 'current' : 'pending'; const button = el('button', null, `stage-tab ${state}${index === step ? ' active' : ''}`); button.type = 'button'; button.append(el('span', state === 'complete' ? '✓' : String(index + 1), 'stage-number'), el('span', label)); button.onclick = () => setStep(index); nav.append(button); });
   return nav;
 }
 function puzzleOutput(e, pane) {
@@ -194,6 +209,7 @@ function stagePane(e) {
     pane.append(el('p', 'Working in the background. The action button is disabled until this step finishes; you can still review earlier and later results.', 'working-copy'));
   } else if (action) {
     pane.append(el('p', action[1], 'stage-description'));
+    const direction = stageDirection(e, action[2]); if (direction) pane.append(direction);
     addButton(pane, action[0], runAction(e, action), 'primary');
   } else if (!e.finalReady && waitingMessage(e, step)) pane.append(el('p', waitingMessage(e, step), 'stage-description'));
   else if (e.finalReady && step === 8) pane.append(el('p', 'Your final video is ready to watch or download below.', 'stage-description'));
