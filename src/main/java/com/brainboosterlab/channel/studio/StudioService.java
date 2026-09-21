@@ -82,8 +82,9 @@ class StudioService {
         episode.settingsJson = json.writeValueAsString(settings);
         return view(repository.saveAndFlush(episode));
     }
-    List<View> list() { return repository.findAllByOrderByCreatedAtDesc().stream().map(this::view).toList(); }
-    View get(UUID id) { return view(find(id)); }
+    /** A legacy or partially written record must not make the entire history page unavailable. */
+    List<View> list() { return repository.findAllByOrderByCreatedAtDesc().stream().map(this::safeView).toList(); }
+    View get(UUID id) { return safeView(find(id)); }
 
     /** The brief remains editable only until its first generated script makes it an auditable production record. */
     synchronized View updateBrief(UUID id, String brief) {
@@ -524,6 +525,19 @@ class StudioService {
             e.narrationGroundingJson == null ? null : json.readValue(e.narrationGroundingJson, NarrationGrounding.class), speech, e.lastError,
             e.scriptModel, e.responseId, e.narrationModel, e.narrationResponseId, e.narrationGroundingModel, e.speechModel, e.speechVoice, settings(e),
             e.approvedAt, ready, reviews, Files.isRegularFile(dir.resolve("preview.mp4")), Files.isRegularFile(dir.resolve("final.mp4")), speechReady);
+    }
+    private View safeView(StudioEpisode episode) {
+        try { return view(episode); }
+        catch (Exception ignored) {
+            EpisodeSettings savedSettings;
+            try { savedSettings = settings(episode); }
+            catch (Exception alsoIgnored) { savedSettings = defaults; }
+            return new View(episode.id, episode.brief, "FAILED", null, null, null, null, null, null,
+                "This older saved episode no longer matches the current puzzle format. Its files are retained, but create a new episode to continue.",
+                episode.scriptModel, episode.responseId, episode.narrationModel, episode.narrationResponseId,
+                episode.narrationGroundingModel, episode.speechModel, episode.speechVoice, savedSettings, episode.approvedAt,
+                false, List.of(), false, false, false);
+        }
     }
     private static void require(boolean condition, String message) {
         if (!condition) throw new ResponseStatusException(HttpStatus.CONFLICT, message);
