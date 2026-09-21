@@ -83,36 +83,48 @@ class StudioAi {
         String activeModel = requestedModel == null || requestedModel.isBlank() ? model : requestedModel.trim();
         if (!"live".equals(generationMode)) return new Draft(PilotFixtures.kids(), "local-fixture", "none");
         String prompt = """
-            Create %d original illustrated mini-mysteries for a family channel, ages roughly 6–10
-            watching with family. Set kind="visual" for ALL THREE. Aim for an achievable visual aha:
-            one observation, one simple inference, one clear answer among A/B/C. First puzzle is a
-            welcoming confidence-builder; later clues slightly less obvious but never tiny or tricky.
-            NO arithmetic, number patterns, time calculations, truth tables, long alibis or schoolwork.
-            NO tiny hidden-object searches. Examples: three friends drinking cocoa, one friendly ghost
-            has no shadow; one friend wears a homemade cardboard robot costume; one toy animal has a
-            winding key. Friendly fantasy, never frightening or implying real people are nonhuman.
-            Never use skin color, disability, body differences or cultural appearance as an alien clue.
-            A mechanical/prosthetic limb does not prove someone is nonhuman. Use an unmistakable
-            handmade costume clue instead when ordinary robot-looking body parts would be ambiguous.
-            Avoid trivially obvious category differences. For a cardboard robot costume puzzle, show
-            THREE similar robot outfits; only one has an exposed corrugated edge. Do not put only
-            one child in a costume beside two ordinary shirts. The visible detail should reward looking.
-            If using ghosts/shadows/reflections, facts must contain ONE short explicitly fictional
-            world rule, e.g. 'In this magic cafe, only ghosts have no shadow.' Do not present folklore
-            as science. Avoid mirrors unless the geometry and mapping can be completely unambiguous.
-            All subjects equally inviting, no obviously monstrous correct answer. The clue is large
-            enough to see on a phone, not so huge it spoils the moment. Avoid alternate explanations.
+            Create %d original illustrated visual mini-mysteries for a family channel: children ages 6–18
+            solving lively challenges with parents. Set kind="visual" for EVERY puzzle. Each is a satisfying
+            family challenge: not an instant giveaway, but fair to solve during one ten-second look by comparing
+            the whole scene, noticing one meaningful detail, and making one simple inference. The first puzzle
+            is not a warm-up; every puzzle should have the same enjoyable, medium challenge level. Never use
+            arithmetic, number patterns, time calculations, truth tables, long alibis, schoolwork, or tiny
+            hidden-object searches.
+
+            VARIETY IS A HARD REQUIREMENT. Treat this episode as a fresh collection, not a variation of one
+            stock riddle. Every puzzle must use a distinctly different setting, story premise, visual mechanism,
+            clue type, and answer rationale. Do not repeat a mechanism within the episode. Do not default to
+            cardboard robots, winding keys, missing shadows, reflections, disguised ghosts, or any familiar
+            example from prior output. Those themes are allowed only when the creative brief specifically calls
+            for them, and then at most once in an episode. Draw from a broad rotating mix: playful everyday
+            mishaps, imaginative science, cozy mysteries, animal adventures, light fantasy, harmless kid-friendly
+            monsters, games, travel, food, clubs, nature, festivals, inventions, and make-believe worlds. Make
+            the premise, physical evidence, and decisive observation new each time. Do not reuse a title,
+            question shape, setting, clue mechanism, or reveal wording across puzzles.
+
+            Use 3, 4, or 5 candidates when it serves the scene; vary the candidate count across this episode
+            when there is more than one puzzle. Choices must be consecutive OPTION letters starting at A
+            (A/B/C, A/B/C/D, or A/B/C/D/E). All candidates must be equally plausible at first glance and the
+            correct one must be proven by the picture, not by a suspicious expression or obvious category mismatch.
+            The clue must be large enough to see on a phone but subtle enough to reward a second look. Avoid
+            alternate explanations. Friendly fantasy and monsters are welcome, but never frightening, cruel, or
+            implying real people are nonhuman. Never use skin color, disability, body differences, or cultural
+            appearance as evidence. A mechanical/prosthetic limb does not prove someone is nonhuman. If a story
+            uses magic, ghosts, shadows, or reflections, include one short explicit fictional world rule only
+            when it is genuinely necessary; never present folklore as science.
+
             question: max10 words AND60 characters. facts: zero or one line, max65 characters;
             only an essential story rule, never a paragraph or solution. setup: spoken introduction
             for FUTURE narration, max155 characters; not displayed as a paragraph in the video.
-            choices: exactly A,B,C in left/center/right order; label a name/color max24 characters;
+            choices: three to five consecutive choices A through C, D, or E in left-to-right order; label a name/color max24 characters;
             statement max100 characters describing the subject's appearance for production, NOT a
             spoken alibi or caption. Do NOT reveal the clue in the label. explanation: a warm,
             concrete reveal, max14 words AND85 characters. title max48, episode title max65.
-            sceneDescription: max1600 characters. Specify exactly three subjects in the left,
-            middle and right thirds, full clue visibility, exact clue and which subject owns it,
-            correct ordinary counterparts on the other two, no confusing props or extra subjects.
-            NO text or badges in sceneDescription: the application adds all A/B/C labels outside the art.
+            sceneDescription: max1600 characters. Specify exactly the chosen three-to-five candidate subjects,
+            arranged left-to-right in matching OPTION order, with every candidate and the full clue visible.
+            State the exact clue and which candidate owns it, plus clear ordinary counterparts. Do not add
+            confusing extra candidate-like people or props. NO text or badges in sceneDescription: the application
+            adds all OPTION labels outside the art.
             The artwork itself MUST carry the evidence; the written answer is not proof that the
             image succeeded. One image is reused unchanged during question and answer.
             Keep the refined 2D illustrated style and rich teal/amber/coral palette, with appealing
@@ -152,10 +164,10 @@ class StudioAi {
             "setup", p.setup(), "question", p.question(), "facts", p.facts(), "choices", p.choices(),
             "scenePlan", "visual".equals(p.kind()) ? p.sceneDescription() : "Not applicable")).toList();
         String prompt = "Independently solve these " + spec.puzzles().size() + " reasoning puzzles in order. For each return puzzleNumber in order starting at 1, "
-            + "independentlySolvedAnswerId A/B/C (or NONE if ambiguous), fair boolean, and notes explaining proof "
+            + "independentlySolvedAnswerId matching one supplied OPTION letter (or NONE if ambiguous), fair boolean, and notes explaining proof "
             + "and why alternatives fail. Reject ambiguity, unstated necessary facts, harmful stereotypes, "
             + "claims that lying proves guilt and tiny object hunts. For visual mini-mysteries, solve from the planned "
-            + "scene, checking one visible clue and one simple inference appropriate to ages 6–10; reject homework-like "
+            + "scene, checking one visible clue and one simple inference appropriate to family viewers ages 6–18; reject homework-like "
             + "reasoning, unsafe stereotypes and unstated supernatural rules. This is only a concept check; an actual-image "
             + "blind visual check follows later. Judge family suitability. "
             + "This is an adversarial review, not a request to endorse. Questions: " + json.writeValueAsString(questions)
@@ -199,17 +211,18 @@ class StudioAi {
             Use case: illustration-story. Create a premium 16:9 children's visual mini-mystery.
             Keep the polished 2D mystery-comic style: natural anatomy, refined ink contours, rich teal,
             warm amber and coral, atmospheric light, charming people and detailed but calm scenery.
-            Exactly THREE main subjects, one in each equal left/center/right third. No other people.
+            Exactly the three-to-five candidate subjects specified in the scene plan, arranged left-to-right in
+            matching OPTION order. No other candidate-like people.
             Full bodies and any floor/shadow evidence fully inside the image. No cropping of clues.
-            Do not reserve large text panels: the app puts a short question and A/B/C outside the art.
+            Do not reserve large text panels: the app puts a short question and OPTION badges outside the art.
             Evidence has to be genuinely visible and coherent, not simply described in a prompt.
-            One clear visual clue, easy-to-medium for ages 6–10, readable at phone size. Other two
-            subjects must clearly lack that anomaly. Preserve equal expressions so faces don't give
+            One clear visual clue, medium challenge for family viewers ages 6–18, readable at phone size. Every other
+            candidate must clearly lack that anomaly. Preserve equal expressions so faces don't give
             the answer away. Friendly make-believe, never scary. No text, labels, numbers, logos,
             watermarks, arrows, rings or answer highlights. No plastic 3D or preschool clip-art.
             The following scene plan is authoritative, especially its shadows/reflections/robot details:
             """ + puzzle.sceneDescription();
-        prompt += "\nFinal lettering constraint: do NOT draw A/B/C badges or any text, even if the scene brief mentions them. The application alone adds those labels."
+        prompt += "\nFinal lettering constraint: do NOT draw OPTION badges or any text, even if the scene brief mentions them. The application alone adds those labels."
             + operatorSuffix(operatorDirection);
         Path artwork = directory.resolve("art-" + index + ".png");
         if (Files.exists(artwork)) return; // Paid output is immutable and reused on retries/renders.
@@ -247,7 +260,7 @@ class StudioAi {
         if ("visual".equals(puzzle.kind())) return reviewVisualMystery(frame, puzzle, activeModel);
         String prompt = "Review this final question frame for a family reasoning video. Assess readable complete text, "
             + "natural image proportions, coherent anatomy, no obvious graphic defects, no accidental answer reveal, "
-            + "and correct left/center/right mapping of any depicted A/B/C subjects. Text must not cover faces. Return acceptable=false "
+            + "and correct left-to-right mapping of every depicted OPTION subject. Text must not cover faces. Return acceptable=false "
             + "for material defects. Do not mistake contextual artwork for evidence; written facts are authoritative. "
             + "Do not rubber-stamp. Intended puzzle: " + json.writeValueAsString(puzzle);
         var input = EasyInputMessage.builder().role(EasyInputMessage.Role.USER)
@@ -297,10 +310,10 @@ class StudioAi {
         var message = EasyInputMessage.builder().role(EasyInputMessage.Role.USER)
             .contentOfResponseInputMessageContentList(List.of(
                 ResponseInputContent.ofInputText(ResponseInputText.builder().text(
-                    "Solve this visual mini-mystery from this image alone. Return answerId A/B/C or NONE if uncertain, "
-                    + "clearForKids boolean for ages6–10, observedClue describing only pixels actually visible, and issues. "
-                    + "Read the short on-screen fictional rule if present. All three options must be visible; no tiny, "
-                    + "ambiguous, cropped or obscured clue. For missing-shadow/reflection puzzles inspect all three "
+                    "Solve this visual mini-mystery from this image alone. Return the matching visible OPTION letter or NONE if uncertain, "
+                    + "clearForKids boolean for family viewers ages 6–18, observedClue describing only pixels actually visible, and issues. "
+                    + "Read the short on-screen fictional rule if present. Every option must be visible; no tiny, "
+                    + "ambiguous, cropped or obscured clue. For missing-shadow/reflection puzzles inspect every "
                     + "counterparts and lighting carefully; do not assume a missing shadow just because a ghost is mentioned. "
                     + "Reject if multiple answers fit. Do not infer a robot from ordinary clothing or disability. "
                     + "Also reject obvious anatomy defects, covered faces, excessive text or a prematurely highlighted answer.").build()),

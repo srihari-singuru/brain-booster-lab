@@ -27,14 +27,18 @@ public record EpisodeSpec(String title, List<Puzzle> puzzles) {
                     "Use a reasoning question, not an object search");
             require(p.facts() != null && (visual ? p.facts().size() <= 1 : p.facts().size() >= 1 && p.facts().size() <= 3), "Visual puzzles allow at most one short story rule");
             p.facts().forEach(f -> text(f, visual ? 65 : 100, "Fact"));
-            require(p.choices() != null && p.choices().size() == 3, "Use exactly three choices");
-            for (int i = 0; i < 3; i++) {
+            require(p.choices() != null && p.choices().size() >= 3 && p.choices().size() <= 5,
+                "Use between three and five choices");
+            for (int i = 0; i < p.choices().size(); i++) {
                 Choice c = p.choices().get(i);
-                require(c != null && String.valueOf((char) ('A' + i)).equals(c.id()), "Choices must be ordered A, B, C");
+                require(c != null && String.valueOf((char) ('A' + i)).equals(c.id()),
+                    "Choices must be ordered consecutively from A");
                 text(c.label(), 24, "Choice label");
                 text(c.statement(), 100, "Choice statement");
             }
-            require(List.of("A", "B", "C").contains(p.answerId()), "Answer must refer to a choice");
+            require(p.answerId() != null && p.answerId().length() == 1
+                && p.answerId().charAt(0) >= 'A' && p.answerId().charAt(0) < 'A' + p.choices().size(),
+                "Answer must refer to a choice");
             text(p.explanation(), visual ? 85 : 300, "Explanation");
             require(!visual || p.explanation().trim().split("\\s+").length <= 14, "Visual reveals must be fourteen words or fewer");
             text(p.sceneDescription(), 1600, "Scene description");

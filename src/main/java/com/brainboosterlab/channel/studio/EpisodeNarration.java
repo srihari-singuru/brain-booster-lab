@@ -30,7 +30,7 @@ public record EpisodeNarration(String episodeOpening, List<PuzzleNarration> puzz
         for (EpisodeSpec.Choice choice : puzzle.choices()) {
             String label = choice.label().trim().toLowerCase(Locale.ROOT);
             if (label.length() >= 3 && spoken.matches("(?s).*\\b" + Pattern.quote(label) + "\\b.*"))
-                throw new IllegalArgumentException("Narration must refer to choices as OPTION A, B, or C, never by name or label");
+                throw new IllegalArgumentException("Narration must refer to choices by their OPTION letter, never by name or label");
         }
     }
 

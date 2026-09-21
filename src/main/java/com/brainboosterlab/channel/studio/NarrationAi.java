@@ -75,7 +75,7 @@ class NarrationAi {
             - revealExplanation: 18–34 words, designed for about ten seconds. State the correct choice and the exact
               visible clue/rule that proves it, warmly and plainly.
             - episodeClosing: one fresh 4–28-word sign-off for a future ending.
-            - Never use a character name, choice label, or descriptive choice name anywhere in narration. Refer to a choice only as OPTION A, OPTION B, or OPTION C.
+            - Never use a character name, choice label, or descriptive choice name anywhere in narration. Refer to a choice only as its supplied OPTION letter (A through E).
             - The lead-in and timer cue must never expose an option letter, the answer, or the decisive clue.
             - The reveal must begin with the correct OPTION letter, then unpack the visible proof with enough cozy, story-like detail to reward a careful guess.
             - No headings, timestamps, stage directions, sound effects, markdown, or text intended to appear on art.
@@ -111,7 +111,7 @@ class NarrationAi {
             noAnswerLeak is true only when the question lead-in and timer cue do NOT reveal or strongly telegraph the
             correct option, character/name, answer letter, decisive visual clue, or explanation. storyFitsPuzzle is
             true only when the narration uses no invented evidence and the reveal correctly names the right answer and
-            its exact proof, identifying the answer as OPTION A, OPTION B, or OPTION C only. It must reject any use of a choice name or label. timeFits is true only when lead-in is 18–34 words, timer cue 3–10, and reveal 18–34.
+            its exact proof, identifying the answer only as the supplied OPTION letter (A through E). It must reject any use of a choice name or label. timeFits is true only when lead-in is 18–34 words, timer cue 3–10, and reveal 18–34.
             familySafe is true only for warm, age-appropriate language with no pressure, shame, fear, stereotypes or
             unsafe claims. Be adversarial: reject generic filler and ambiguous proof. Put concise actionable feedback
             in notes. Do not rubber-stamp.
@@ -149,7 +149,7 @@ class NarrationAi {
             specification and its proposed narration. Do not trust the written scene plan when it contradicts a frame.
 
             For every puzzle, verify that the correct option and decisive clue are truly visible, readable, and
-            unambiguous in the frame. Check that the narration names only OPTION A, OPTION B, or OPTION C, never
+            unambiguous in the frame. Check that the narration names only the supplied OPTION letter (A through E), never
             a character name or choice label. If the frame supports the puzzle, polish the narration only as needed
             to speak exactly what a child can fairly infer from the displayed frame. Preserve the warm 10-second
             lead-in, fixed 10-second timer cue, and 10-second reveal structure. Never invent details to repair art.
