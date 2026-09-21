@@ -118,8 +118,30 @@ class StudioService {
         var episode = find(id);
         require(!active(episode.status), "This episode is already working in the background");
         stage(episode, status);
-        worker.execute(action);
+        try {
+            worker.execute(() -> {
+                try {
+                    action.run();
+                } catch (Exception exception) {
+                    // Individual stages deliberately validate their preconditions before their
+                    // own try/catch blocks. The worker boundary must still settle the saved
+                    // state if one of those checks (or a future stage) throws first.
+                    recordWorkerFailure(id, exception);
+                }
+            });
+        } catch (RuntimeException exception) {
+            return failed(episode, exception);
+        }
         return view(episode);
+    }
+
+    private synchronized void recordWorkerFailure(UUID id, Exception exception) {
+        try {
+            var episode = find(id);
+            if (active(episode.status)) failed(episode, exception);
+        } catch (Exception ignored) {
+            // This is a final safety net. A server restart will recover any still-active record.
+        }
     }
 
     @PreDestroy
@@ -541,6 +563,8 @@ class StudioService {
             ? "This stage exceeded its request deadline. No partial response was accepted; retry manually when ready."
             : "OpenAIInvalidDataException".equals(type)
             ? "OpenAI returned an incomplete structured response; no puzzle script was saved. Retry manually to send a shorter recovery request."
+            : exception instanceof org.springframework.web.server.ResponseStatusException response && response.getReason() != null
+            ? response.getReason()
             : exception instanceof IllegalArgumentException ? exception.getMessage()
             : "Stage failed (" + type + "). Check model access, API credits and local services, then retry this stage. Existing assets are retained.";
         save(e); return view(e);
