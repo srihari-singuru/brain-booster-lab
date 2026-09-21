@@ -33,6 +33,9 @@ class StudioController {
         @RequestBody EpisodeSettings settings) { return studio.settingsRevision(id, settings); }
     @PostMapping(value = "/{id}/generate", consumes = "application/json") StudioService.View generate(@PathVariable UUID id) { return studio.startGenerate(id); }
     @PostMapping(value = "/{id}/review", consumes = "application/json") StudioService.View review(@PathVariable UUID id) { return studio.startReview(id); }
+    @PostMapping(value = "/{id}/continue-with-review-warnings", consumes = "application/json") StudioService.View continueWithReviewWarnings(@PathVariable UUID id) {
+        return studio.continueWithReviewWarnings(id);
+    }
     @PostMapping(value = "/{id}/narration", consumes = "application/json") StudioService.View narration(@PathVariable UUID id) { return studio.startNarration(id); }
     @PostMapping(value = "/{id}/ground-narration", consumes = "application/json") StudioService.View groundNarration(@PathVariable UUID id) { return studio.startGroundNarration(id); }
     @PostMapping(value = "/{id}/speech", consumes = "application/json") StudioService.View speech(@PathVariable UUID id) { return studio.startSpeech(id); }

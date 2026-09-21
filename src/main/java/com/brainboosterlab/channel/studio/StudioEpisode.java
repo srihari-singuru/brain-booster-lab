@@ -12,6 +12,7 @@ class StudioEpisode {
     @Column(nullable = false) String status;
     @Column(columnDefinition = "text") String specJson;
     @Column(columnDefinition = "text") String reviewJson;
+    @Column(nullable = false) boolean puzzleReviewOverridden;
     @Column(columnDefinition = "text") String narrationJson;
     @Column(columnDefinition = "text") String narrationReviewJson;
     @Column(columnDefinition = "text") String narrationGroundingJson;

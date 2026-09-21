@@ -24,6 +24,8 @@ const title = e => e.spec?.title || 'New puzzle episode';
 
 function notice(text) { const node = by('notice'); node.textContent = text; node.hidden = !text; }
 function isReviewed(e) { return !!e.review?.findings?.length && e.review.findings.every(f => f.fair && e.spec?.puzzles?.[f.puzzleNumber - 1]?.answerId === f.independentlySolvedAnswerId); }
+function reviewCanBeOverridden(e) { return !!e.review?.findings?.length && e.review.findings.length === e.spec?.puzzles?.length && e.review.findings.every(f => e.spec?.puzzles?.[f.puzzleNumber - 1]?.answerId === f.independentlySolvedAnswerId); }
+function reviewGatePassed(e) { return isReviewed(e) || !!e.puzzleReviewOverridden; }
 function isGrounded(e) { return !!e.narrationGrounding?.findings?.length && e.narrationGrounding.findings.every(f => f.visualClueConfirmed && f.narrationMatchesFrame && f.optionOnly); }
 function isWorking(e) { return ACTIVE.has(e?.status); }
 function actionUsesAi(action) { return ['generate', 'review', 'artwork', 'narration', 'ground-narration', 'speech'].includes(action); }
@@ -39,7 +41,7 @@ function deadlineNote(e) {
 function savedStep(e) { const value = Number(localStorage.getItem(`brain-booster-step-${e.id}`)); return Number.isInteger(value) && value >= 0 && value < STEPS.length ? value : firstOpenStep(e); }
 function setStep(value) { step = Math.max(0, Math.min(STEPS.length - 1, value)); if (episode) localStorage.setItem(`brain-booster-step-${episode.id}`, String(step)); draw(); }
 function firstOpenStep(e) {
-  if (!e.spec) return 0; if (!isReviewed(e)) return 1; if (!e.artworkReady) return 2; if (!e.narration) return 3;
+  if (!e.spec) return 0; if (!reviewGatePassed(e)) return 1; if (!e.artworkReady) return 2; if (!e.narration) return 3;
   if (!isGrounded(e)) return 4; if (!e.speechReady) return 5; if (!e.previewReady) return 6; if (!e.approvedAt) return 7; if (!e.finalReady) return 8; return 8;
 }
 function retryDefinition(e) {
@@ -109,8 +111,8 @@ function actionFor(e, index) {
   const retryingGeneration = !e.spec && e.status === 'FAILED';
   const actions = [
     !e.spec && [retryingGeneration ? 'Retry puzzle generation' : 'Generate puzzles', retryingGeneration ? 'Send a concise recovery request. No prior puzzle content was saved.' : 'Generate the puzzle script with your configured text model.', 'generate', false],
-    e.spec && !isReviewed(e) && ['Review puzzles', 'Run the fairness and reasoning check before artwork.', 'review', false],
-    isReviewed(e) && !e.artworkReady && ['Generate artwork', 'Create illustrations and visual-quality checks. This uses image credits.', 'artwork', true],
+    e.spec && !reviewGatePassed(e) && [e.review ? 'Run puzzle review again' : 'Review puzzles', e.review ? 'Run the fairness and reasoning check again using the saved puzzles.' : 'Run the fairness and reasoning check before artwork.', 'review', false],
+    reviewGatePassed(e) && !e.artworkReady && ['Generate artwork', 'Create illustrations and visual-quality checks. This uses image credits.', 'artwork', true],
     e.artworkReady && !e.narration && ['Generate narration', 'Write the story-led narration for these exact puzzles.', 'narration', false],
     e.narration && e.artworkReady && !isGrounded(e) && ['Ground narration', 'Verify every narrated clue against the finished images.', 'ground-narration', false],
     isGrounded(e) && !e.speechReady && ['Generate voice', 'Create local voice clips using the saved voice settings. This uses speech credits.', 'speech', true],
@@ -121,7 +123,7 @@ function actionFor(e, index) {
   return actions[index] || null;
 }
 function waitingMessage(e, index) {
-  const requirements = [null, 'Generate puzzles first.', 'Pass the puzzle review before creating artwork.', 'Generate artwork before narration.', 'Generate narration and artwork before grounding.', 'Pass narration grounding before creating voice.', 'Generate voice before rendering a preview.', 'Render a preview before approval.', 'Approve the episode before final rendering.'];
+  const requirements = [null, 'Generate puzzles first.', 'Complete the puzzle review or deliberately continue with its warnings before creating artwork.', 'Generate artwork before narration.', 'Generate narration and artwork before grounding.', 'Pass narration grounding before creating voice.', 'Generate voice before rendering a preview.', 'Render a preview before approval.', 'Approve the episode before final rendering.'];
   return requirements[index];
 }
 function instructionKey(action) { return ({generate:'generate',review:'review',artwork:'artwork',narration:'narration','ground-narration':'grounding',speech:'speech'})[action]; }
@@ -141,6 +143,30 @@ function actionPreflight(e, action) {
     ? `This makes an OpenAI API request using your account credits. It uses ${action[2] === 'artwork' ? settings(e).imageModel : action[2] === 'speech' ? `${settings(e).speechVoice} at ${settings(e).speechSpeed}×` : settings(e).textModel}. The saved result appears below.`
     : 'This step runs locally. No OpenAI request is made; the saved result appears below.';
   box.append(el('p', copy));
+  return box;
+}
+function continueWithReviewWarnings(e) {
+  return async () => {
+    if (busy) return;
+    busy = true; draw(); notice('Saving your decision…');
+    try {
+      episode = await request('/' + e.id + '/continue-with-review-warnings');
+      step = firstOpenStep(episode);
+      localStorage.setItem(`brain-booster-step-${episode.id}`, String(step));
+      notice('Review warnings accepted. You can now choose artwork when ready.');
+    } catch (error) { notice(error.message); }
+    finally { busy = false; draw(); }
+  };
+}
+function reviewDecision(e) {
+  if (!e.review || reviewGatePassed(e)) return null;
+  const box = el('aside', null, 'review-decision');
+  if (!reviewCanBeOverridden(e)) {
+    box.append(el('h3', 'Do not continue yet'), el('p', 'The reviewer could not confirm one or more answers. Update the script or run the review again before spending on artwork.'));
+    return box;
+  }
+  box.append(el('h3', 'Choose the next path'), el('p', 'The reviewer agrees with every answer, but flagged quality concerns. You can run the review again, or continue with these saved warnings. Continuing does not make an OpenAI call.'));
+  addButton(box, 'Continue with review warnings', continueWithReviewWarnings(e), 'secondary', isWorking(e));
   return box;
 }
 function approvalChecklist(e) {
@@ -209,7 +235,8 @@ function puzzleOutput(e, pane) {
 function reviewOutput(e, pane) {
   outputTitle(pane, 'Generated result', 'Puzzle review');
   if (!e.review) return emptyOutput(pane, 'The independent fairness review will appear here.');
-  const pass = isReviewed(e); pane.append(el('p', pass ? 'All puzzles passed the independent review.' : 'One or more puzzles need changes before artwork.', pass ? 'pass-note' : 'warning-note'));
+  const pass = isReviewed(e); const overridden = !!e.puzzleReviewOverridden;
+  pane.append(el('p', pass ? 'All puzzles passed the independent review.' : overridden ? 'You chose to continue with the saved review warnings.' : 'One or more puzzles need changes before artwork.', pass || overridden ? 'pass-note' : 'warning-note'));
   e.review.findings?.forEach(f => { const card = el('article', null, 'finding'); card.append(el('h4', `Puzzle ${f.puzzleNumber} — ${f.fair ? 'Passed' : 'Needs changes'}`)); facts(card, {IndependentlySolvedAnswerId:f.independentlySolvedAnswerId, Fair:f.fair, Notes:f.notes || f.reasoning || ''}); pane.append(card); });
 }
 function artworkOutput(e, pane) {
@@ -270,6 +297,7 @@ function stagePane(e) {
     pane.append(el('p', `${label} is running · ${durationSince(e)} elapsed. ${deadlineNote(e)} You can safely leave this page; the result is retained locally and will appear below.`, 'working-copy'));
   } else if (action) {
     pane.append(el('p', action[1], 'stage-description'));
+    if (action[2] === 'review') { const decision = reviewDecision(e); if (decision) pane.append(decision); }
     const direction = stageDirection(e, action[2]); if (direction) pane.append(direction);
     pane.append(actionPreflight(e, action));
     if (action[2] === 'approve') pane.append(approvalChecklist(e));

@@ -23,7 +23,7 @@ class StudioService {
                 EpisodeNarration narration, NarrationAi.Review narrationReview, NarrationGrounding narrationGrounding, EpisodeSpeech speech,
                 String lastError, String failedStage, String scriptModel, String responseId, String narrationModel, String narrationResponseId,
                 String narrationGroundingModel, String speechModel, String speechVoice, EpisodeSettings settings, StageInstructions stageInstructions, Instant approvedAt, boolean artworkReady,
-                List<StudioAi.VisualReview> visualReviews, boolean previewReady, boolean finalReady, boolean speechReady) {}
+                List<StudioAi.VisualReview> visualReviews, boolean previewReady, boolean finalReady, boolean speechReady, boolean puzzleReviewOverridden) {}
     private final StudioRepository repository;
     private final StudioAi ai;
     private final NarrationAi narrator;
@@ -103,6 +103,16 @@ class StudioService {
      */
     synchronized View startGenerate(UUID id) { return start(id, "GENERATING", () -> generate(id)); }
     synchronized View startReview(UUID id) { return start(id, "REVIEWING", () -> review(id)); }
+    synchronized View continueWithReviewWarnings(UUID id) {
+        var episode = find(id);
+        require(episode.approvedAt == null, "Approved episode is immutable; create a revision");
+        var spec = spec(episode);
+        require(reviewAllowsWarningOverride(episode, spec),
+            "The reviewer disagreed about an answer or returned an incomplete review. Resolve that script issue before continuing.");
+        episode.puzzleReviewOverridden = true;
+        stage(episode, "SCRIPT_REVIEW");
+        return view(episode);
+    }
     synchronized View startNarration(UUID id) { return start(id, "NARRATING", () -> narration(id)); }
     synchronized View startGroundNarration(UUID id) { return start(id, "NARRATION_GROUNDING", () -> groundNarration(id)); }
     synchronized View startArtwork(UUID id) { return start(id, "PREPARING_ART", () -> artwork(id)); }
@@ -525,7 +535,19 @@ class StudioService {
         return instructions;
     }
     private boolean reviewPasses(StudioEpisode e, EpisodeSpec spec) {
-        return e.reviewJson != null && json.readValue(e.reviewJson, StudioAi.Review.class).passes(spec);
+        return e.puzzleReviewOverridden || (e.reviewJson != null && json.readValue(e.reviewJson, StudioAi.Review.class).passes(spec));
+    }
+    /** A creator may accept quality warnings, never a reviewer disagreement about the actual answer. */
+    private boolean reviewAllowsWarningOverride(StudioEpisode e, EpisodeSpec spec) {
+        if (e.reviewJson == null) return false;
+        var findings = json.readValue(e.reviewJson, StudioAi.Review.class).findings();
+        if (findings == null || findings.size() != spec.puzzles().size()) return false;
+        for (int i = 0; i < findings.size(); i++) {
+            var finding = findings.get(i);
+            if (finding == null || finding.puzzleNumber() != i + 1
+                || !spec.puzzles().get(i).answerId().equals(finding.independentlySolvedAnswerId())) return false;
+        }
+        return true;
     }
     private EpisodeNarration narration(StudioEpisode e, EpisodeSpec spec) {
         require(e.narrationJson != null, "Generate narration first");
@@ -599,7 +621,7 @@ class StudioService {
             e.narrationReviewJson == null ? null : json.readValue(e.narrationReviewJson, NarrationAi.Review.class),
             e.narrationGroundingJson == null ? null : json.readValue(e.narrationGroundingJson, NarrationGrounding.class), speech, e.lastError, e.failedStage,
             e.scriptModel, e.responseId, e.narrationModel, e.narrationResponseId, e.narrationGroundingModel, e.speechModel, e.speechVoice, settings(e), stageInstructions(e),
-            e.approvedAt, ready, reviews, Files.isRegularFile(dir.resolve("preview.mp4")), Files.isRegularFile(dir.resolve("final.mp4")), speechReady);
+            e.approvedAt, ready, reviews, Files.isRegularFile(dir.resolve("preview.mp4")), Files.isRegularFile(dir.resolve("final.mp4")), speechReady, e.puzzleReviewOverridden);
     }
     private View safeView(StudioEpisode episode) {
         try { return view(episode); }
@@ -611,7 +633,7 @@ class StudioService {
                 "This older saved episode no longer matches the current puzzle format. Its files are retained, but create a new episode to continue.", episode.failedStage,
                 episode.scriptModel, episode.responseId, episode.narrationModel, episode.narrationResponseId,
                 episode.narrationGroundingModel, episode.speechModel, episode.speechVoice, savedSettings, StageInstructions.EMPTY, episode.approvedAt,
-                false, List.of(), false, false, false);
+                false, List.of(), false, false, false, false);
         }
     }
 
