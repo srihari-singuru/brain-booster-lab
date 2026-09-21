@@ -11,6 +11,7 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.nio.file.*;
 import java.time.Instant;
+import java.time.Duration;
 import java.util.Base64;
 import java.util.List;
 import javax.imageio.ImageIO;
@@ -67,7 +68,7 @@ class StudioAi {
         this.model = model;
         this.imageModel = imageModel;
         this.client = ("live".equals(generationMode) || "live".equals(artworkMode))
-            ? OpenAIOkHttpClient.builder().fromEnv().maxRetries(0).build() : null;
+            ? OpenAIOkHttpClient.builder().fromEnv().timeout(Duration.ofSeconds(120)).maxRetries(0).build() : null;
     }
 
     Draft generate(String brief) {

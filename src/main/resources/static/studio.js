@@ -33,6 +33,9 @@ function reviewReady(e) { const checks = reviewState(e); return REVIEW_ITEMS.eve
 function runningKey(e) { return `brain-booster-running-${e.id}`; }
 function runningSince(e) { const value = Number(localStorage.getItem(runningKey(e))); return value > 0 ? value : Date.now(); }
 function durationSince(e) { const elapsed = Math.max(0, Math.floor((Date.now() - runningSince(e)) / 1000)); return `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}`; }
+function deadlineNote(e) {
+  return ({GENERATING:'The request has a two-minute deadline.', REVIEWING:'The request has a two-minute deadline.', NARRATING:'The request has a two-minute deadline.', NARRATION_GROUNDING:'The request has a two-minute deadline.', PREPARING_ART:'Each image and visual-check request has a two-minute deadline; saved artwork is reused.', SPEAKING:'Each voice request has a 90-second deadline; complete local clips are reused.', RENDERING:'Local rendering has a ten-minute deadline; frames and clips remain available.'})[e.status] || 'This action has a saved recovery path.';
+}
 function savedStep(e) { const value = Number(localStorage.getItem(`brain-booster-step-${e.id}`)); return Number.isInteger(value) && value >= 0 && value < STEPS.length ? value : firstOpenStep(e); }
 function setStep(value) { step = Math.max(0, Math.min(STEPS.length - 1, value)); if (episode) localStorage.setItem(`brain-booster-step-${episode.id}`, String(step)); draw(); }
 function firstOpenStep(e) {
@@ -264,7 +267,7 @@ function stagePane(e) {
   const [id, label] = STEPS[step]; const pane = el('section', null, 'stage-pane'); pane.append(el('p', `Stage ${step + 1} of ${STEPS.length}`, 'section-label'), el('h2', label));
   const action = actionFor(e, step), working = isWorking(e);
   if (working) {
-    pane.append(el('p', `${label} is running · ${durationSince(e)} elapsed. You can safely leave this page; the result is retained locally and will appear below.`, 'working-copy'));
+    pane.append(el('p', `${label} is running · ${durationSince(e)} elapsed. ${deadlineNote(e)} You can safely leave this page; the result is retained locally and will appear below.`, 'working-copy'));
   } else if (action) {
     pane.append(el('p', action[1], 'stage-description'));
     const direction = stageDirection(e, action[2]); if (direction) pane.append(direction);

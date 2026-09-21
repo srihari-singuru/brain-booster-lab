@@ -7,6 +7,7 @@ import com.openai.models.ReasoningEffort;
 import com.openai.models.responses.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.Base64;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Value;
@@ -42,7 +43,7 @@ class NarrationAi {
                 @Value("${brain-booster.narration.model:}") String narrationModel) {
         this.mode = narrationMode == null || narrationMode.isBlank() ? generationMode : narrationMode;
         this.model = narrationModel == null || narrationModel.isBlank() ? generationModel : narrationModel;
-        this.client = "live".equals(mode) ? OpenAIOkHttpClient.builder().fromEnv().maxRetries(0).build() : null;
+        this.client = "live".equals(mode) ? OpenAIOkHttpClient.builder().fromEnv().timeout(Duration.ofSeconds(120)).maxRetries(0).build() : null;
     }
 
     Draft write(EpisodeSpec spec) {

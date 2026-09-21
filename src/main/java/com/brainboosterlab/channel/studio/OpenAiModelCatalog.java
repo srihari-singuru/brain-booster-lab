@@ -3,6 +3,7 @@ package com.brainboosterlab.channel.studio;
 import com.openai.client.OpenAIClient;
 import com.openai.client.okhttp.OpenAIOkHttpClient;
 import java.time.Instant;
+import java.time.Duration;
 import java.util.Comparator;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Value;
@@ -19,7 +20,7 @@ class OpenAiModelCatalog {
     OpenAiModelCatalog(@Value("${brain-booster.generation.mode:mock}") String generationMode,
                        @Value("${brain-booster.artwork.mode:mock}") String artworkMode) {
         client = ("live".equals(generationMode) || "live".equals(artworkMode))
-            ? OpenAIOkHttpClient.builder().fromEnv().maxRetries(0).build() : null;
+            ? OpenAIOkHttpClient.builder().fromEnv().timeout(Duration.ofSeconds(15)).maxRetries(0).build() : null;
     }
 
     synchronized Catalog list() {

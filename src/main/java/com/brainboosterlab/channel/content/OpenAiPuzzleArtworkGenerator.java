@@ -34,7 +34,7 @@ class OpenAiPuzzleArtworkGenerator implements PuzzleArtworkGenerator {
         if (properties.model() == null || properties.model().isBlank()) {
             throw new IllegalStateException("OPENAI_IMAGE_MODEL must be set when ARTWORK_MODE=live");
         }
-        this.client = OpenAIOkHttpClient.fromEnv();
+        this.client = OpenAIOkHttpClient.builder().fromEnv().timeout(Duration.ofSeconds(120)).maxRetries(0).build();
         this.properties = properties;
     }
 

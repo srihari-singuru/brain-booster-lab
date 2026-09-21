@@ -536,10 +536,13 @@ class StudioService {
         e.failedStage = e.status;
         e.status = "FAILED";
         // Never persist raw HTTP bodies/headers, which can contain credentials or signed URLs.
-        e.lastError = "OpenAIInvalidDataException".equals(exception.getClass().getSimpleName())
+        String type = exception.getClass().getSimpleName();
+        e.lastError = timedOut(exception)
+            ? "This stage exceeded its request deadline. No partial response was accepted; retry manually when ready."
+            : "OpenAIInvalidDataException".equals(type)
             ? "OpenAI returned an incomplete structured response; no puzzle script was saved. Retry manually to send a shorter recovery request."
             : exception instanceof IllegalArgumentException ? exception.getMessage()
-            : "Stage failed (" + exception.getClass().getSimpleName() + "). Check model access, API credits and local services, then retry this stage. Existing assets are retained.";
+            : "Stage failed (" + type + "). Check model access, API credits and local services, then retry this stage. Existing assets are retained.";
         save(e); return view(e);
     }
     private View view(StudioEpisode e) {
@@ -612,6 +615,11 @@ class StudioService {
     }
     private static void require(boolean condition, String message) {
         if (!condition) throw new ResponseStatusException(HttpStatus.CONFLICT, message);
+    }
+    private static boolean timedOut(Throwable exception) {
+        for (Throwable current = exception; current != null; current = current.getCause())
+            if (current.getClass().getSimpleName().contains("Timeout")) return true;
+        return false;
     }
     private static String fallback(String value, String defaultValue) {
         return value == null || value.isBlank() ? defaultValue : value.trim();

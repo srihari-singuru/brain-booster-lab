@@ -4,6 +4,7 @@ import com.openai.client.OpenAIClient;
 import com.openai.client.okhttp.OpenAIOkHttpClient;
 import com.openai.models.responses.Response;
 import com.openai.models.responses.ResponseCreateParams;
+import java.time.Duration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
@@ -18,7 +19,7 @@ class OpenAiPuzzleScriptGenerator implements PuzzleScriptGenerator {
         if (properties.model() == null || properties.model().isBlank()) {
             throw new IllegalStateException("OPENAI_MODEL must be set when GENERATION_MODE=live");
         }
-        this.client = OpenAIOkHttpClient.fromEnv();
+        this.client = OpenAIOkHttpClient.builder().fromEnv().timeout(Duration.ofSeconds(120)).maxRetries(0).build();
         this.model = properties.model();
     }
 

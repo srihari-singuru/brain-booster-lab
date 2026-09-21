@@ -8,6 +8,7 @@ import java.io.BufferedInputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -58,7 +59,7 @@ class SpeechAi {
         this.mode = speechMode == null || speechMode.isBlank() ? generationMode : speechMode;
         this.model = speechModel == null || speechModel.isBlank() ? "gpt-4o-mini-tts" : speechModel.trim();
         this.voice = speechVoice == null || speechVoice.isBlank() ? "cedar" : speechVoice.trim().toLowerCase(Locale.ROOT);
-        this.client = "live".equals(mode) ? OpenAIOkHttpClient.builder().fromEnv().maxRetries(0).build() : null;
+        this.client = "live".equals(mode) ? OpenAIOkHttpClient.builder().fromEnv().timeout(Duration.ofSeconds(90)).maxRetries(0).build() : null;
         this.ffmpeg = ffmpeg == null || ffmpeg.isBlank() ? "ffmpeg" : ffmpeg;
     }
 
