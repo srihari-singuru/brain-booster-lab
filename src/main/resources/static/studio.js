@@ -7,6 +7,13 @@ const STEPS = [
   ['grounding', 'Grounding'], ['voice', 'Voice'], ['preview', 'Preview'], ['approval', 'Approval'], ['final', 'Final video']
 ];
 let selected = location.hash.slice(1), episode = null, busy = false, step = 0;
+const REVIEW_ITEMS = [
+  ['puzzles', 'The puzzle logic and options are fair.'],
+  ['artwork', 'The artwork is clear and the reveal points to the right clue.'],
+  ['narration', 'The narration matches the puzzle and its answer.'],
+  ['voice', 'The voice pace and energy feel right.'],
+  ['preview', 'I watched the preview video from start to finish.']
+];
 let defaultSettings = {channelName:'BRAIN BOOSTER LAB', puzzleCount:3, textModel:'gpt-4o-mini', imageModel:'gpt-image-1', narrationModel:'gpt-4o-mini', speechModel:'gpt-4o-mini-tts', speechVoice:'cedar', speechSpeed:1};
 let modelCatalog = {text:['gpt-6-astra','gpt-5.6-sol','gpt-5.6-terra'],image:['gpt-image-2'],speech:['gpt-4o-mini-tts'],voices:['cedar','marin','alloy','ash','ballad','coral','echo','fable','nova','onyx','sage','shimmer','verse'],live:false};
 const by = id => document.querySelector('#' + id);
@@ -19,6 +26,13 @@ function notice(text) { const node = by('notice'); node.textContent = text; node
 function isReviewed(e) { return !!e.review?.findings?.length && e.review.findings.every(f => f.fair && e.spec?.puzzles?.[f.puzzleNumber - 1]?.answerId === f.independentlySolvedAnswerId); }
 function isGrounded(e) { return !!e.narrationGrounding?.findings?.length && e.narrationGrounding.findings.every(f => f.visualClueConfirmed && f.narrationMatchesFrame && f.optionOnly); }
 function isWorking(e) { return ACTIVE.has(e?.status); }
+function actionUsesAi(action) { return ['generate', 'review', 'artwork', 'narration', 'ground-narration', 'speech'].includes(action); }
+function reviewKey(e) { return `brain-booster-review-${e.id}`; }
+function reviewState(e) { try { return JSON.parse(localStorage.getItem(reviewKey(e))) || {}; } catch { return {}; } }
+function reviewReady(e) { const checks = reviewState(e); return REVIEW_ITEMS.every(([key]) => checks[key]); }
+function runningKey(e) { return `brain-booster-running-${e.id}`; }
+function runningSince(e) { const value = Number(localStorage.getItem(runningKey(e))); return value > 0 ? value : Date.now(); }
+function durationSince(e) { const elapsed = Math.max(0, Math.floor((Date.now() - runningSince(e)) / 1000)); return `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}`; }
 function savedStep(e) { const value = Number(localStorage.getItem(`brain-booster-step-${e.id}`)); return Number.isInteger(value) && value >= 0 && value < STEPS.length ? value : firstOpenStep(e); }
 function setStep(value) { step = Math.max(0, Math.min(STEPS.length - 1, value)); if (episode) localStorage.setItem(`brain-booster-step-${episode.id}`, String(step)); draw(); }
 function firstOpenStep(e) {
@@ -79,7 +93,7 @@ function actionFor(e, index) {
     e.narration && e.artworkReady && !isGrounded(e) && ['Ground narration', 'Verify every narrated clue against the finished images.', 'ground-narration', false],
     isGrounded(e) && !e.speechReady && ['Generate voice', 'Create local voice clips using the saved voice settings. This uses speech credits.', 'speech', true],
     e.speechReady && !e.previewReady && ['Render preview', 'Create a reviewable video before approval.', 'preview', false],
-    e.previewReady && !e.approvedAt && ['Approve episode', 'Lock this reviewed episode for final rendering.', 'approve', true],
+    e.previewReady && !e.approvedAt && ['Approve episode', 'Lock this reviewed episode for final rendering.', 'approve', false],
     e.approvedAt && !e.finalReady && ['Render final video', 'Create the downloadable final video.', 'render', false]
   ];
   return actions[index] || null;
@@ -97,6 +111,26 @@ function stageDirection(e, action) {
   const box = el('section', null, 'prompt-card'); box.append(el('p', 'AI prompt for this stage', 'output-kicker'), el('p', basePromptLabel(action), 'prompt-summary'));
   const label = el('label', 'ADDITIONAL DIRECTION — OPTIONAL'); const area = document.createElement('textarea'); area.id = 'stage-instruction'; area.rows = 4; area.maxLength = 3000; area.placeholder = 'Add a direction for this run, for example: “Make the first puzzle a cheerful garden mystery.”'; area.value = e.stageInstructions?.[key] || ''; label.append(area); box.append(label, el('p', 'This text is saved and appended to the protected production prompt when you click the stage button.', 'prompt-note')); return box;
 }
+function actionPreflight(e, action) {
+  const box = el('aside', null, 'action-preflight');
+  const ai = actionUsesAi(action[2]);
+  box.append(el('p', ai ? 'Before you run this' : 'Run details', 'preflight-title'));
+  const copy = ai
+    ? `This makes an OpenAI API request using your account credits. It uses ${action[2] === 'artwork' ? settings(e).imageModel : action[2] === 'speech' ? `${settings(e).speechVoice} at ${settings(e).speechSpeed}×` : settings(e).textModel}. The saved result appears below.`
+    : 'This step runs locally. No OpenAI request is made; the saved result appears below.';
+  box.append(el('p', copy));
+  return box;
+}
+function approvalChecklist(e) {
+  const state = reviewState(e); const box = el('section', null, 'approval-checklist');
+  box.append(el('h3', 'Final review'), el('p', 'Confirm these checks before locking this episode. These notes are saved in this browser for this episode.'));
+  REVIEW_ITEMS.forEach(([key, text]) => {
+    const label = el('label', null, 'review-item'); const input = document.createElement('input'); input.type = 'checkbox'; input.checked = !!state[key];
+    input.onchange = () => { const next = reviewState(e); next[key] = input.checked; localStorage.setItem(reviewKey(e), JSON.stringify(next)); draw(); };
+    label.append(input, document.createTextNode(text)); box.append(label);
+  });
+  return box;
+}
 function runAction(e, action) {
   return async () => {
     const setup = by('episode-settings'); const direction = by('stage-instruction')?.value || ''; const creativePrompt = setup?.querySelector('textarea')?.value;
@@ -107,7 +141,9 @@ function runAction(e, action) {
       if (!e.spec && creativePrompt?.trim()) prepared = await request('/' + prepared.id + '/brief', 'PUT', {brief:creativePrompt.trim()});
       const key = instructionKey(action[2]);
       if (!e.approvedAt && key) { const instructions = {...(prepared.stageInstructions || {generate:'',review:'',artwork:'',narration:'',grounding:'',speech:''}), [key]:direction}; prepared = await request('/' + prepared.id + '/stage-instructions', 'POST', instructions); }
-      episode = await request('/' + prepared.id + '/' + action[2]); notice('Working in the background. This page updates automatically.');
+      episode = await request('/' + prepared.id + '/' + action[2]);
+      if (isWorking(episode)) localStorage.setItem(runningKey(episode), String(Date.now()));
+      notice(isWorking(episode) ? 'Working in the background. This page updates automatically.' : 'Step completed. Review the result below.');
     }
     catch (error) { notice(error.message); }
     finally { busy = false; draw(); }
@@ -115,7 +151,9 @@ function runAction(e, action) {
 }
 function buildSettings(e) {
   const section = el('section', null, 'settings-top'); section.id = 'episode-settings'; section.dataset.channelName = settings(e).channelName;
-  const head = el('div', null, 'settings-heading'); head.append(el('div', null, 'channel-lock')); head.firstChild.append(el('p', 'Channel', 'section-label'), el('h2', settings(e).channelName)); head.append(el('p', modelCatalog.live ? 'Models refreshed from your OpenAI account' : 'Using saved model options — refresh after API access is available', 'catalog-status')); section.append(head);
+  const head = el('div', null, 'settings-heading'); head.append(el('div', null, 'channel-lock')); head.firstChild.append(el('h2', settings(e).channelName), el('p', 'Production profile for this episode', 'settings-subtitle')); head.append(el('p', modelCatalog.live ? 'Model choices refreshed from OpenAI' : 'Using the saved model choices', 'catalog-status')); section.append(head);
+  const summary = el('p', `${settings(e).puzzleCount} puzzles · ${settings(e).textModel} · ${settings(e).imageModel} · ${settings(e).speechVoice} at ${settings(e).speechSpeed}×`, 'profile-summary'); section.append(summary);
+  const profile = document.createElement('details'); profile.className = 'production-profile'; const profileLabel = el('summary', 'Edit production profile'); profile.append(profileLabel);
   const grid = el('div', null, 'settings-grid');
   const fields = [['Puzzle count','puzzleCount','number'], ['Text model','textModel','text'], ['Image model','imageModel','image'], ['Narration model','narrationModel','text'], ['Speech model','speechModel','speech'], ['Voice','speechVoice','voice'], ['Voice speed','speechSpeed','speed']];
   for (const [label, key, type] of fields) {
@@ -124,15 +162,16 @@ function buildSettings(e) {
     else { input = document.createElement('select'); const source = type === 'image' ? modelCatalog.image : type === 'speech' ? modelCatalog.speech : type === 'voice' ? modelCatalog.voices : type === 'speed' ? [.85,.9,.95,1,1.05,1.1].map(String) : modelCatalog.text; fillSelect(input, source, String(settings(e)[key]), type === 'speed' ? value => `${Number(value).toFixed(2)}×` : value => value); }
     input.dataset.setting = key; if (isWorking(e)) input.disabled = true; wrap.append(input); grid.append(wrap);
   }
-  section.append(grid);
+  profile.append(grid);
   const controls = el('div', null, 'settings-controls'); addButton(controls, e.approvedAt ? 'Create settings version' : 'Save settings', async () => { busy = true; draw(); try { const updated = await request('/' + e.id + (e.approvedAt ? '/settings-revision' : '/settings'), 'POST', readSettings(section)); selected = updated.id; location.hash = selected; episode = updated; step = savedStep(updated); notice(e.approvedAt ? 'A settings version was created.' : 'Settings saved.'); } catch (error) { notice(error.message); } finally { busy = false; draw(); } }, 'secondary', isWorking(e)); section.append(controls);
+  profile.append(controls); section.append(profile);
   if (!e.spec) { const label = el('label', 'CREATIVE PROMPT', 'prompt-top'); const area = document.createElement('textarea'); area.value = e.brief; area.maxLength = 4000; area.rows = 4; label.append(area); section.append(label); }
   return section;
 }
 function buildNavigation(e) {
   const nav = el('nav', null, 'wizard-nav'); nav.setAttribute('aria-label', 'Episode stages');
   const open = firstOpenStep(e); const running = {GENERATING:0, REVIEWING:1, PREPARING_ART:2, NARRATING:3, NARRATION_GROUNDING:4, SPEAKING:5, RENDERING:e.approvedAt ? 8 : 6}[e.status];
-  STEPS.forEach(([id, label], index) => { const state = index < open ? 'complete' : index === (running ?? open) ? 'current' : 'pending'; const button = el('button', null, `stage-tab ${state}${index === step ? ' active' : ''}`); button.type = 'button'; button.append(el('span', state === 'complete' ? '✓' : String(index + 1), 'stage-number'), el('span', label)); button.onclick = () => setStep(index); nav.append(button); });
+  STEPS.forEach(([id, label], index) => { const state = index < open ? 'complete' : index === (running ?? open) ? 'current' : 'pending'; const button = el('button', null, `stage-tab ${state}${index === step ? ' active' : ''}`); button.type = 'button'; button.append(el('span', String(index + 1), 'stage-number'), el('span', label), el('span', state === 'complete' ? 'Done' : state === 'current' ? 'Now' : 'Later', 'stage-state')); button.onclick = () => setStep(index); nav.append(button); });
   return nav;
 }
 function puzzleOutput(e, pane) {
@@ -206,27 +245,29 @@ function stagePane(e) {
   const [id, label] = STEPS[step]; const pane = el('section', null, 'stage-pane'); pane.append(el('p', `Stage ${step + 1} of ${STEPS.length}`, 'section-label'), el('h2', label));
   const action = actionFor(e, step), working = isWorking(e);
   if (working) {
-    pane.append(el('p', 'Working in the background. The action button is disabled until this step finishes; you can still review earlier and later results.', 'working-copy'));
+    pane.append(el('p', `${label} is running · ${durationSince(e)} elapsed. You can safely leave this page; the result is retained locally and will appear below.`, 'working-copy'));
   } else if (action) {
     pane.append(el('p', action[1], 'stage-description'));
     const direction = stageDirection(e, action[2]); if (direction) pane.append(direction);
-    addButton(pane, action[0], runAction(e, action), 'primary');
+    pane.append(actionPreflight(e, action));
+    if (action[2] === 'approve') pane.append(approvalChecklist(e));
+    addButton(pane, action[0], runAction(e, action), 'primary', action[2] === 'approve' && !reviewReady(e));
   } else if (!e.finalReady && waitingMessage(e, step)) pane.append(el('p', waitingMessage(e, step), 'stage-description'));
   else if (e.finalReady && step === 8) pane.append(el('p', 'Your final video is ready to watch or download below.', 'stage-description'));
   const controls = el('div', null, 'stage-controls'); addButton(controls, 'Previous', () => setStep(step - 1), 'secondary', step === 0); addButton(controls, step === STEPS.length - 1 ? 'Back to first stage' : 'Next', () => setStep(step === STEPS.length - 1 ? 0 : step + 1), 'secondary'); pane.append(controls);
   return pane;
 }
 function workflow(e) {
-  const shell = el('article', null, 'workflow'); const header = el('header', null, 'workflow-header'); header.append(el('p', settings(e).channelName, 'eyebrow'), el('h1', title(e)), el('p', `Status: ${e.status.replaceAll('_', ' ').toLowerCase()}`, 'status')); shell.append(header);
-  if (e.lastError) shell.append(el('p', e.lastError, 'error'));
+  const shell = el('article', null, 'workflow'); const header = el('header', null, 'workflow-header'); const meta = el('div', null, 'episode-meta'); meta.append(el('span', settings(e).channelName, 'channel-badge'), el('span', e.status.replaceAll('_', ' ').toLowerCase(), `status-badge ${isWorking(e) ? 'working' : e.finalReady ? 'complete' : 'ready'}`)); header.append(el('h1', title(e)), meta); shell.append(header);
+  if (e.lastError) { const error = el('div', null, 'error'); error.append(el('strong', 'This step needs attention. '), document.createTextNode(`${e.lastError} Update the stage direction or production profile, then run the unfinished step again.`)); shell.append(error); }
   shell.append(buildSettings(e), buildNavigation(e), stagePane(e), stageOutput(e, step));
   const footer = el('div', null, 'episode-footer'); addButton(footer, 'Start another episode', () => { selected = ''; location.hash = ''; episode = null; fillSettings(settings(e)); by('brief').value = e.brief; draw(); }, 'text-button'); shell.append(footer); return shell;
 }
 function draw() {
   const host = by('workspace'), form = by('brief-form'), home = document.querySelector('.home'); form.hidden = !!episode; home.classList.toggle('episode-open', !!episode); host.replaceChildren();
-  if (!episode) { host.append(el('div', '✦', 'welcome-mark'), el('h1', 'Make the next puzzle video.'), el('p', 'Start with the channel, puzzle count, and creative prompt.', 'intro')); return; }
+  if (!episode) { host.append(el('h1', 'Make the next puzzle video.'), el('p', 'A calm, manual studio for original family puzzle videos.', 'intro')); return; }
   host.append(workflow(episode));
 }
 by('brief-form').onsubmit = async event => { event.preventDefault(); if (busy) return; busy = true; notice('Creating episode…'); try { episode = await request('', 'POST', {brief:by('brief').value, settings:readSettings()}); selected = episode.id; location.hash = selected; step = 0; localStorage.setItem(`brain-booster-step-${selected}`, '0'); notice('Episode created. Generate puzzles when you are ready.'); } catch (error) { notice(error.message); } finally { busy = false; draw(); } };
 load();
-setInterval(async () => { if (!busy && episode && isWorking(episode)) { try { const wasWorking = true; const response = await fetch(`${api}/${episode.id}`); if (!response.ok) throw new Error(); episode = await response.json(); if (wasWorking && !isWorking(episode)) notice('Step finished. Review the result below, then choose the next action when ready.'); draw(); } catch { notice('Cannot refresh this running episode. Check your local server, then refresh.'); } } }, 3000);
+setInterval(async () => { if (!busy && episode && isWorking(episode)) { try { const wasWorking = true; const response = await fetch(`${api}/${episode.id}`); if (!response.ok) throw new Error(); episode = await response.json(); if (wasWorking && !isWorking(episode)) { localStorage.removeItem(runningKey(episode)); notice('Step finished. Review the result below, then choose the next action when ready.'); } draw(); } catch { notice('Cannot refresh this running episode. Check your local server, then refresh.'); } } }, 3000);
