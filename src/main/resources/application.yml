@@ -1,5 +1,8 @@
 server:
   address: 127.0.0.1
+  error:
+    # All deliberate workflow rejections carry a short, safe recovery message.
+    include-message: always
 
 spring:
   application:

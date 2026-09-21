@@ -124,9 +124,6 @@ class StudioService {
         var original = spec(source);
         var sourceView = view(source);
         require(sourceView.artworkReady(), "Prepare the complete artwork before choosing puzzles");
-        require(sourceView.visualReviews().size() == original.puzzles().size()
-                && sourceView.visualReviews().stream().allMatch(StudioAi.VisualReview::acceptable),
-            "Resolve the artwork quality checks before choosing puzzles");
         var positions = selectedPuzzlePositions(requestedPuzzleNumbers, original.puzzles().size());
         var selectedPuzzles = positions.stream().map(i -> original.puzzles().get(i)).toList();
         var selectedSpec = new EpisodeSpec(original.title(), selectedPuzzles);
@@ -513,8 +510,9 @@ class StudioService {
         require(reviewPasses(e, spec), "The reasoning review must pass");
         var view = view(e);
         require(view.artworkReady(), "Prepare all artwork before approval");
-        require(view.visualReviews().size() == spec.puzzles().size() && view.visualReviews().stream().allMatch(StudioAi.VisualReview::acceptable),
-            "Resolve the visual review findings before approval");
+        require(e.artworkSelectionFinalized || (view.visualReviews().size() == spec.puzzles().size()
+                && view.visualReviews().stream().allMatch(StudioAi.VisualReview::acceptable)),
+            "Choose the final puzzle set after artwork, or resolve the visual review findings before approval");
         if (e.narrationJson != null) require(view.speechReady(),
             "Generate and listen to the AI voice before approving this narrated episode");
         e.approvedAt = Instant.now(); stage(e, "APPROVED");
@@ -734,7 +732,7 @@ class StudioService {
         return titles.toString();
     }
     private static void require(boolean condition, String message) {
-        if (!condition) throw new ResponseStatusException(HttpStatus.CONFLICT, message);
+        if (!condition) throw new IllegalArgumentException(message);
     }
     private static boolean timedOut(Throwable exception) {
         for (Throwable current = exception; current != null; current = current.getCause())

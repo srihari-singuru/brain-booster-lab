@@ -5,6 +5,7 @@ import java.util.UUID;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -64,5 +65,10 @@ class StudioController {
     @ExceptionHandler(IllegalArgumentException.class)
     ResponseEntity<Map<String, String>> invalid(IllegalArgumentException e) {
         return ResponseEntity.badRequest().body(Map.of("detail", e.getMessage()));
+    }
+    @ExceptionHandler(ResponseStatusException.class)
+    ResponseEntity<Map<String, String>> status(ResponseStatusException e) {
+        String detail = e.getReason() == null || e.getReason().isBlank() ? "The request cannot be completed." : e.getReason();
+        return ResponseEntity.status(e.getStatusCode()).body(Map.of("detail", detail));
     }
 }

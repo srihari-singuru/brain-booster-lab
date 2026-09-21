@@ -65,7 +65,7 @@ function retryDefinition(e) {
 async function request(path, method = 'POST', body) {
   const response = await fetch(api + path, {method, headers:{'Content-Type':'application/json'}, body:body === undefined ? undefined : JSON.stringify(body)});
   let data; try { data = await response.json(); } catch { throw new Error('The local studio returned an unexpected response. Refresh once and try again.'); }
-  if (!response.ok) throw new Error(data.detail || data.message || 'Request failed');
+  if (!response.ok) throw new Error(data.detail || data.message || data.error || 'Request failed');
   return data;
 }
 function choices(values, current) { return [...new Set([...(values || []), current].filter(Boolean))]; }
@@ -180,7 +180,7 @@ function savedSelection(e) {
 function artworkSelection(e) {
   if (!e.artworkReady || e.artworkSelectionFinalized) return null;
   const section = el('section', null, 'artwork-selection');
-  section.append(el('h3', 'Choose puzzles for the video'), el('p', 'Keep the images you want. The next episode version will use only these puzzles for narration, voice, preview, and final video. This is local and makes no OpenAI call.'));
+  section.append(el('h3', 'Choose puzzles for the video'), el('p', 'Keep the images you want. The next episode version will use only these puzzles for narration, voice, preview, and final video. Choosing them confirms your visual decision; automated review notes remain visible. This is local and makes no OpenAI call.'));
   const selectedNumbers = new Set(savedSelection(e)); const choices = el('div', null, 'selection-list'); const count = el('p', null, 'selection-count');
   const update = () => {
     const values = [...selectedNumbers].sort((a, b) => a - b); localStorage.setItem(selectionKey(e), JSON.stringify(values));
