@@ -80,7 +80,6 @@ function waitingMessage(e, index) {
 }
 function runAction(e, action) {
   return async () => {
-    if (action[3] && !confirm(action[0] + '?')) return;
     busy = true; draw(); notice(action[0] + ' started.');
     try { episode = await request('/' + e.id + '/' + action[2]); notice('Working in the background. This page updates automatically.'); }
     catch (error) { notice(error.message); }
