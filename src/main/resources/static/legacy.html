@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Brain Booster Lab — Legacy jobs</title>
+  <style>
+    :root { --blue:#1f6feb; --yellow:#ffd43b; --pink:#f05aa6; --ink:#172033; --paper:#f7f9fc; }
+    * { box-sizing:border-box; }
+    body { margin:0; color:var(--ink); background:var(--paper); font-family:Inter,ui-sans-serif,system-ui,-apple-system,sans-serif; }
+    header { padding:32px max(24px,calc((100vw - 1100px)/2)); color:white; background:linear-gradient(115deg,var(--blue),#6b45d9 55%,var(--pink)); }
+    header h1 { margin:0 0 6px; font-size:clamp(28px,5vw,48px); letter-spacing:-.04em; }
+    header p { margin:0; opacity:.9; }
+    main { max-width:1100px; margin:0 auto; padding:28px 24px 60px; }
+    .panel { background:white; border-radius:18px; padding:22px; box-shadow:0 10px 30px #243b6412; margin-bottom:24px; }
+    label { display:block; font-weight:700; margin:0 0 7px; }
+    input, textarea { width:100%; border:2px solid #e5eaf3; border-radius:10px; padding:12px 14px; font:inherit; margin-bottom:15px; }
+    textarea { min-height:110px; resize:vertical; }
+    button { border:0; border-radius:999px; padding:10px 16px; color:white; background:var(--blue); font-weight:800; cursor:pointer; }
+    button.secondary { color:var(--ink); background:#eef2f8; }
+    button.approve { background:#16a36b; }
+    button.render { color:var(--ink); background:var(--yellow); }
+    button:disabled { opacity:.45; cursor:not-allowed; }
+    .toolbar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    #message { min-height:24px; color:#667085; margin-top:12px; }
+    .job { border:2px solid #edf0f5; border-radius:14px; padding:18px; margin-top:14px; }
+    .job h3 { margin:0 0 6px; }
+    .job p { white-space:pre-wrap; line-height:1.45; }
+    .badge { display:inline-block; border-radius:999px; padding:4px 10px; font-size:12px; font-weight:800; background:#eef2f8; }
+    .badge.READY,.badge.RENDERED { background:#dff7e9; color:#087443; }
+    .badge.APPROVED { background:#fff1c2; color:#775900; }
+    .badge.FAILED { background:#ffe0e0; color:#a01818; }
+    code { word-break:break-all; color:#43516a; }
+    .empty { color:#667085; text-align:center; padding:20px; }
+  </style>
+</head>
+<body>
+  <header><h1>Brain Booster Lab</h1><p>Create, approve, generate, and render family-friendly puzzle videos locally.</p></header>
+  <main>
+    <section class="panel">
+      <h2>New puzzle brief</h2>
+      <form id="brief-form">
+        <label for="title">Working title</label>
+        <input id="title" required placeholder="e.g. Spot the Star">
+        <label for="prompt">Creative brief</label>
+        <textarea id="prompt" placeholder="Describe the puzzle, tone, visual style, and audience..."></textarea>
+        <div class="toolbar"><button type="submit">Create draft</button><button type="button" class="secondary" id="refresh">Refresh queue</button></div>
+      </form>
+      <div id="message" role="status"></div>
+    </section>
+    <section class="panel"><h2>Approval queue</h2><div id="jobs"><div class="empty">Loading…</div></div></section>
+  </main>
+  <script>
+    const jobs = document.querySelector('#jobs');
+    const message = document.querySelector('#message');
+    const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+    async function request(url, options) {
+      const response = await fetch(url, options);
+      if (!response.ok) throw new Error(await response.text() || `${response.status} ${response.statusText}`);
+      return response.status === 204 ? null : response.json();
+    }
+    function action(job, label, actionClass, path, allowed) {
+      return `<button class="${actionClass}" data-action="${path}" ${allowed ? '' : 'disabled'}>${label}</button>`;
+    }
+    function renderJobs(items) {
+      if (!items.length) { jobs.innerHTML = '<div class="empty">No drafts yet. Create the first puzzle brief above.</div>'; return; }
+      jobs.innerHTML = items.map(job => `<article class="job">
+        <div class="toolbar"><h3>${esc(job.title)}</h3><span class="badge ${esc(job.status)}">${esc(job.status)}</span></div>
+        <p>${esc(job.prompt || 'No creative brief supplied.')}</p>
+        ${job.scriptText ? `<details><summary>Generated script</summary><p>${esc(job.scriptText)}</p></details>` : ''}
+        ${job.artifactPath ? `<p><strong>Video artifact:</strong><br><code>${esc(job.artifactPath)}</code></p>` : ''}
+        <div class="toolbar">
+          ${action(job, 'Approve', 'approve', `/api/v1/content-jobs/${job.id}/approve`, job.status === 'DRAFT')}
+          ${action(job, 'Generate script', '', `/api/v1/content-jobs/${job.id}/generate`, job.status === 'APPROVED')}
+          ${action(job, 'Render video', 'render', `/api/v1/content-jobs/${job.id}/render`, job.status === 'READY')}
+        </div>
+      </article>`).join('');
+    }
+    async function refresh() { try { renderJobs(await request('/api/v1/content-jobs')); } catch (error) { message.textContent = error.message; } }
+    document.querySelector('#brief-form').addEventListener('submit', async event => {
+      event.preventDefault();
+      try {
+        await request('/api/v1/content-jobs', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ title:document.querySelector('#title').value, prompt:document.querySelector('#prompt').value }) });
+        event.target.reset(); message.textContent = 'Draft created.'; await refresh();
+      } catch (error) { message.textContent = error.message; }
+    });
+    jobs.addEventListener('click', async event => {
+      const button = event.target.closest('button[data-action]'); if (!button || button.disabled) return;
+      button.disabled = true; message.textContent = 'Working…';
+      try { await request(button.dataset.action, { method:'POST' }); message.textContent = 'Workflow updated.'; await refresh(); }
+      catch (error) { message.textContent = error.message; await refresh(); }
+    });
+    document.querySelector('#refresh').addEventListener('click', refresh); refresh();
+  </script>
+</body>
+</html>

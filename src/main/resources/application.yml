@@ -1,3 +1,6 @@
+server:
+  address: 127.0.0.1
+
 spring:
   application:
     name: brain-booster-lab
@@ -29,6 +32,15 @@ brain-booster:
   artwork:
     mode: ${ARTWORK_MODE:mock}
     model: ${OPENAI_IMAGE_MODEL:}
+  narration:
+    # Blank values inherit the text-generation mode and model above.
+    mode: ${NARRATION_MODE:}
+    model: ${NARRATION_MODEL:}
+  speech:
+    # Blank mode inherits GENERATION_MODE. The default is the expressive OpenAI Speech API model.
+    mode: ${SPEECH_MODE:}
+    model: ${OPENAI_TTS_MODEL:gpt-4o-mini-tts}
+    voice: ${OPENAI_TTS_VOICE:cedar}
   render:
     ffmpeg-path: ${FFMPEG_PATH:ffmpeg}
     output-dir: ${RENDER_OUTPUT_DIR:outputs/rendered}

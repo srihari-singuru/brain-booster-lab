@@ -96,4 +96,15 @@ class ContentJobServiceTest {
         assertThat(rendered.getArtifactPath()).isEqualTo("outputs/rendered/test.mp4");
         verify(renderer).render(job);
     }
+
+    @Test
+    void failureDoesNotDestroyGeneratedScriptOrModel() {
+        ContentJob job = ContentJob.draft("A clue", "A puzzle");
+        job.approve(); job.startGenerating();
+        job.markGenerated(new GeneratedScript("Original script", "original-model", "response", null, null));
+        job.markFailed("Rendering interrupted");
+        assertThat(job.getScriptText()).isEqualTo("Original script");
+        assertThat(job.getGenerationModel()).isEqualTo("original-model");
+        assertThat(job.getLastError()).isEqualTo("Rendering interrupted");
+    }
 }

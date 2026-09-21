@@ -196,7 +196,12 @@ class FfmpegVideoRenderer implements VideoRenderer {
         int height = 690;
         g.setColor(new Color(8, 15, 38, 180));
         g.fillRoundRect(x - 14, y - 14, width + 28, height + 28, 38, 38);
-        g.drawImage(artwork, x, y, width, height, null);
+        double scale = Math.min((double) width / artwork.getWidth(), (double) height / artwork.getHeight());
+        int fittedWidth = (int) Math.round(artwork.getWidth() * scale);
+        int fittedHeight = (int) Math.round(artwork.getHeight() * scale);
+        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+        g.drawImage(artwork, x + (width - fittedWidth) / 2, y + (height - fittedHeight) / 2,
+                fittedWidth, fittedHeight, null);
         if (reveal) {
             g.setColor(new Color(255, 211, 66, 90));
             g.setStroke(new BasicStroke(8));

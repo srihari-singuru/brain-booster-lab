@@ -59,6 +59,9 @@ public class ContentJob {
     @Column(name = "rendered_at")
     private OffsetDateTime renderedAt;
 
+    @Column(name = "last_error", columnDefinition = "text")
+    private String lastError;
+
     protected ContentJob() {
     }
 
@@ -100,8 +103,7 @@ public class ContentJob {
     }
 
     public void markFailed(String message) {
-        scriptText = "Generation failed: " + message;
-        generationModel = "error";
+        lastError = message;
         status = ContentJobStatus.FAILED;
     }
 
@@ -149,6 +151,8 @@ public class ContentJob {
     public String getScriptText() {
         return scriptText;
     }
+
+    public String getLastError() { return lastError; }
 
     public String getGenerationModel() {
         return generationModel;

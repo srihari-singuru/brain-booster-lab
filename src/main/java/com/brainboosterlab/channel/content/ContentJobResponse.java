@@ -8,6 +8,7 @@ public record ContentJobResponse(
         String title,
         String prompt,
         ContentJobStatus status,
+        String lastError,
         String scriptText,
         String generationModel,
         String generationResponseId,
@@ -21,7 +22,7 @@ public record ContentJobResponse(
 ) {
     static ContentJobResponse from(ContentJob job) {
         return new ContentJobResponse(
-                job.getId(), job.getTitle(), job.getPrompt(), job.getStatus(),
+                job.getId(), job.getTitle(), job.getPrompt(), job.getStatus(), job.getLastError(),
                 job.getScriptText(), job.getGenerationModel(), job.getGenerationResponseId(),
                 job.getInputTokens(), job.getOutputTokens(),
                 job.getArtifactPath(), job.getRenderCommand(), job.getRenderedAt(),

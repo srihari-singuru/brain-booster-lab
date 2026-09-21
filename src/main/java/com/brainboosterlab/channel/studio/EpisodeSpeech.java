@@ -1,0 +1,31 @@
+package com.brainboosterlab.channel.studio;
+
+import java.util.List;
+
+/** Measured, local metadata for one completed AI voice track. */
+public record EpisodeSpeech(String model, String voice, List<PuzzleSpeech> puzzles) {
+    public record PuzzleSpeech(int puzzleNumber, double questionSeconds, double timerCueSeconds,
+                               double revealSeconds) {}
+
+    public void validate(EpisodeSpec spec) {
+        EpisodeSpec.require(model != null && !model.isBlank() && model.length() <= 120,
+            "Speech model is missing or too long");
+        EpisodeSpec.require(voice != null && !voice.isBlank() && voice.length() <= 120,
+            "Speech voice is missing or too long");
+        EpisodeSpec.require(puzzles != null && puzzles.size() == spec.puzzles().size(),
+            "Speech must contain exactly three puzzle tracks");
+        for (int i = 0; i < puzzles.size(); i++) {
+            PuzzleSpeech track = puzzles.get(i);
+            EpisodeSpec.require(track != null && track.puzzleNumber() == i + 1,
+                "Speech puzzle numbers must be 1, 2, 3 in order");
+            duration(track.questionSeconds(), "Question speech", 2, 35);
+            duration(track.timerCueSeconds(), "Timer cue speech", .25, StudioRenderer.VISUAL_QUESTION_SECONDS);
+            duration(track.revealSeconds(), "Reveal speech", 2, 35);
+        }
+    }
+
+    private static void duration(double value, String label, double minimum, double maximum) {
+        EpisodeSpec.require(Double.isFinite(value) && value >= minimum && value <= maximum,
+            label + " duration is outside its safe range");
+    }
+}
