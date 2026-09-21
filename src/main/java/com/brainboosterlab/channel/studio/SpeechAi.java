@@ -12,6 +12,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
 import javax.sound.sampled.AudioInputStream;
 import javax.sound.sampled.AudioSystem;
 import org.springframework.beans.factory.annotation.Value;
@@ -25,19 +27,24 @@ class SpeechAi {
         "nova", "onyx", "sage", "shimmer", "verse", "marin", "cedar");
     // One rate across every phase prevents perceptible pacing shifts; pitch remains instruction-guided.
     private static final double STANDARD_SPEECH_SPEED = 1.00;
+    private static final double TARGET_WORDS_PER_MINUTE = 155.0;
+    private static final Pattern WORD = Pattern.compile("[\\p{L}\\p{N}]+", Pattern.UNICODE_CHARACTER_CLASS);
     private final String mode;
     private final String model;
     private final String voice;
     private final OpenAIClient client;
+    private final String ffmpeg;
 
     SpeechAi(@Value("${brain-booster.generation.mode:mock}") String generationMode,
              @Value("${brain-booster.speech.mode:}") String speechMode,
              @Value("${brain-booster.speech.model:gpt-4o-mini-tts}") String speechModel,
-             @Value("${brain-booster.speech.voice:cedar}") String speechVoice) {
+             @Value("${brain-booster.speech.voice:cedar}") String speechVoice,
+             @Value("${brain-booster.render.ffmpeg-path:ffmpeg}") String ffmpeg) {
         this.mode = speechMode == null || speechMode.isBlank() ? generationMode : speechMode;
         this.model = speechModel == null || speechModel.isBlank() ? "gpt-4o-mini-tts" : speechModel.trim();
         this.voice = speechVoice == null || speechVoice.isBlank() ? "cedar" : speechVoice.trim().toLowerCase(Locale.ROOT);
         this.client = "live".equals(mode) ? OpenAIOkHttpClient.builder().fromEnv().maxRetries(0).build() : null;
+        this.ffmpeg = ffmpeg == null || ffmpeg.isBlank() ? "ffmpeg" : ffmpeg;
     }
 
     Draft speak(EpisodeSpec spec, EpisodeNarration narration, Path directory) throws Exception {
@@ -54,6 +61,21 @@ class SpeechAi {
             double question = synthesize(beat.questionLeadIn(), directory.resolve("speech-question-" + i + ".wav"), questionDirection(), STANDARD_SPEECH_SPEED);
             double timer = synthesize(beat.timerCue(), directory.resolve("speech-timer-" + i + ".wav"), timerDirection(), STANDARD_SPEECH_SPEED);
             double reveal = synthesize(beat.revealExplanation(), directory.resolve("speech-reveal-" + i + ".wav"), revealDirection(), STANDARD_SPEECH_SPEED);
+            tracks.add(new EpisodeSpeech.PuzzleSpeech(i + 1, question, timer, reveal));
+        }
+        EpisodeSpeech speech = new EpisodeSpeech(model, voice, tracks);
+        speech.validate(spec);
+        return new Draft(speech);
+    }
+
+    Draft normalizeExisting(EpisodeSpec spec, EpisodeNarration narration, Path directory) throws Exception {
+        narration.validate(spec);
+        List<EpisodeSpeech.PuzzleSpeech> tracks = new ArrayList<>();
+        for (int i = 0; i < spec.puzzles().size(); i++) {
+            var beat = narration.puzzles().get(i);
+            double question = normalizePace(directory.resolve("speech-question-" + i + ".wav"), beat.questionLeadIn(), directory);
+            double timer = normalizePace(directory.resolve("speech-timer-" + i + ".wav"), beat.timerCue(), directory);
+            double reveal = normalizePace(directory.resolve("speech-reveal-" + i + ".wav"), beat.revealExplanation(), directory);
             tracks.add(new EpisodeSpeech.PuzzleSpeech(i + 1, question, timer, reveal));
         }
         EpisodeSpeech speech = new EpisodeSpeech(model, voice, tracks);
@@ -83,9 +105,33 @@ class SpeechAi {
                 .responseFormat(SpeechCreateParams.ResponseFormat.WAV).build())) {
             Files.copy(response.body(), pending, StandardCopyOption.REPLACE_EXISTING);
         }
-        double seconds = duration(pending);
+        double seconds = normalizePace(pending, input, target.getParent());
         Files.move(pending, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
         return seconds;
+    }
+
+    private double normalizePace(Path wav, String spokenText, Path directory) throws Exception {
+        if (!Files.isRegularFile(wav)) throw new IllegalStateException("Missing local speech clip " + wav.getFileName());
+        long words = WORD.matcher(spokenText).results().count();
+        if (words == 0) throw new IllegalStateException("Speech text has no words to pace");
+        double original = duration(wav);
+        double targetSeconds = words * 60.0 / TARGET_WORDS_PER_MINUTE;
+        double tempo = original / targetSeconds;
+        if (Math.abs(tempo - 1.0) < .015) return original;
+        EpisodeSpec.require(tempo >= .50 && tempo <= 2.0, "Generated speech pace is outside the safe correction range");
+        Path paced = wav.resolveSibling(wav.getFileName() + ".paced.wav");
+        var process = new ProcessBuilder(ffmpeg, "-y", "-v", "warning", "-i", wav.toString(), "-filter:a",
+            "atempo=" + String.format(Locale.ROOT, "%.6f", tempo), "-c:a", "pcm_s16le", paced.toString())
+            .redirectErrorStream(true).redirectOutput(directory.resolve("speech-pace-ffmpeg.log").toFile()).start();
+        try {
+            if (!process.waitFor(2, TimeUnit.MINUTES)) { process.destroyForcibly(); throw new IllegalStateException("FFmpeg timed out normalizing speech pace"); }
+        } catch (InterruptedException ex) {
+            process.destroyForcibly(); Thread.currentThread().interrupt(); throw ex;
+        }
+        if (process.exitValue() != 0) throw new IllegalStateException("FFmpeg could not normalize local speech pace");
+        double normalized = duration(paced);
+        Files.move(paced, wav, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        return normalized;
     }
 
     private static double duration(Path wav) throws Exception {

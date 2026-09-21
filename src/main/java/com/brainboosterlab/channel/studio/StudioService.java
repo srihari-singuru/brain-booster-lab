@@ -265,9 +265,16 @@ class StudioService {
             "Generate the AI voice before rendering this narrated episode");
         stage(e, "RENDERING");
         try {
-            // Sound effects and pacing are deterministic local production work. Rebuild from the saved clips
+            // Sound effects and pacing are deterministic local production work. Rebuild from saved clips
             // so a preview reflects renderer updates without making another Speech API request.
-            if (speech != null) renderer.writeSpeechTrack(spec, speech, directory(id));
+            if (speech != null && e.narrationJson != null) {
+                var paced = speaker.normalizeExisting(spec, narration(e, spec), directory(id));
+                speech = paced.speech();
+                e.speechJson = json.writeValueAsString(speech);
+                e.speechModel = speech.model(); e.speechVoice = speech.voice();
+                save(e);
+                renderer.writeSpeechTrack(spec, speech, directory(id));
+            }
             renderer.render(spec, directory(id), draft, speech);
             stage(e, draft ? (e.approvedAt == null ? "ART_REVIEW" : "APPROVED") : "RENDERED");
             return view(e);
