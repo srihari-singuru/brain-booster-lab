@@ -27,18 +27,18 @@ class StudioController {
         @RequestBody EpisodeSettings settings) { return studio.settings(id, settings); }
     @PostMapping(value = "/{id}/settings-revision", consumes = "application/json") StudioService.View settingsRevision(@PathVariable UUID id,
         @RequestBody EpisodeSettings settings) { return studio.settingsRevision(id, settings); }
-    @PostMapping(value = "/{id}/generate", consumes = "application/json") StudioService.View generate(@PathVariable UUID id) { return studio.generate(id); }
-    @PostMapping(value = "/{id}/review", consumes = "application/json") StudioService.View review(@PathVariable UUID id) { return studio.review(id); }
-    @PostMapping(value = "/{id}/narration", consumes = "application/json") StudioService.View narration(@PathVariable UUID id) { return studio.narration(id); }
-    @PostMapping(value = "/{id}/ground-narration", consumes = "application/json") StudioService.View groundNarration(@PathVariable UUID id) { return studio.groundNarration(id); }
-    @PostMapping(value = "/{id}/speech", consumes = "application/json") StudioService.View speech(@PathVariable UUID id) { return studio.speech(id); }
+    @PostMapping(value = "/{id}/generate", consumes = "application/json") StudioService.View generate(@PathVariable UUID id) { return studio.startGenerate(id); }
+    @PostMapping(value = "/{id}/review", consumes = "application/json") StudioService.View review(@PathVariable UUID id) { return studio.startReview(id); }
+    @PostMapping(value = "/{id}/narration", consumes = "application/json") StudioService.View narration(@PathVariable UUID id) { return studio.startNarration(id); }
+    @PostMapping(value = "/{id}/ground-narration", consumes = "application/json") StudioService.View groundNarration(@PathVariable UUID id) { return studio.startGroundNarration(id); }
+    @PostMapping(value = "/{id}/speech", consumes = "application/json") StudioService.View speech(@PathVariable UUID id) { return studio.startSpeech(id); }
     @PostMapping(value = "/{id}/revise", consumes = "application/json") StudioService.View revise(@PathVariable UUID id, @RequestBody EpisodeSpec spec) { return studio.revise(id, spec); }
     @PostMapping(value = "/{id}/restyle", consumes = "application/json") StudioService.View restyle(@PathVariable UUID id,
-        @RequestBody(required = false) RestyleOptions options) { return studio.restyle(id, options == null ? null : options.clueRegions()); }
-    @PostMapping(value = "/{id}/artwork", consumes = "application/json") StudioService.View artwork(@PathVariable UUID id) { return studio.artwork(id); }
+        @RequestBody(required = false) RestyleOptions options) { return studio.startRestyle(id, options == null ? null : options.clueRegions()); }
+    @PostMapping(value = "/{id}/artwork", consumes = "application/json") StudioService.View artwork(@PathVariable UUID id) { return studio.startArtwork(id); }
     @PostMapping(value = "/{id}/approve", consumes = "application/json") StudioService.View approve(@PathVariable UUID id) { return studio.approve(id); }
-    @PostMapping(value = "/{id}/preview", consumes = "application/json") StudioService.View preview(@PathVariable UUID id) { return studio.render(id, true); }
-    @PostMapping(value = "/{id}/render", consumes = "application/json") StudioService.View render(@PathVariable UUID id) { return studio.render(id, false); }
+    @PostMapping(value = "/{id}/preview", consumes = "application/json") StudioService.View preview(@PathVariable UUID id) { return studio.startRender(id, true); }
+    @PostMapping(value = "/{id}/render", consumes = "application/json") StudioService.View render(@PathVariable UUID id) { return studio.startRender(id, false); }
     @GetMapping("/{id}/media/{name}")
     ResponseEntity<FileSystemResource> media(@PathVariable UUID id, @PathVariable String name) {
         var file = studio.media(id, name);

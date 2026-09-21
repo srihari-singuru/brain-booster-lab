@@ -4,6 +4,9 @@ import java.nio.file.*;
 import java.time.Instant;
 import java.security.MessageDigest;
 import java.util.*;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import jakarta.annotation.PreDestroy;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
@@ -29,6 +32,11 @@ class StudioService {
     private final Path root;
     private final EpisodeSettings defaults;
     private final JsonMapper json = JsonMapper.builder().build();
+    private final ExecutorService worker = Executors.newSingleThreadExecutor(r -> {
+        Thread thread = new Thread(r, "brain-booster-studio-worker");
+        thread.setDaemon(true);
+        return thread;
+    });
     @Autowired
     StudioService(StudioRepository repository, StudioAi ai, NarrationAi narrator, SpeechAi speaker, StudioRenderer renderer,
                   @Value("${brain-booster.studio.output-dir:outputs/studio}") String output,
@@ -53,12 +61,16 @@ class StudioService {
     @EventListener(ApplicationReadyEvent.class)
     public synchronized void recoverInterrupted() {
         for (var episode : repository.findAll()) {
-            if (Set.of("GENERATING", "REVIEWING", "NARRATING", "NARRATION_GROUNDING", "SPEAKING", "PREPARING_ART", "RENDERING").contains(episode.status)) {
+            if (active(episode.status)) {
                 episode.status = "INTERRUPTED";
                 episode.lastError = "Application stopped during work. Saved scripts and artwork are retained; retry the unfinished stage.";
                 save(episode);
             }
         }
+    }
+
+    private static boolean active(String status) {
+        return Set.of("GENERATING", "REVIEWING", "NARRATING", "NARRATION_GROUNDING", "SPEAKING", "PREPARING_ART", "RENDERING").contains(status);
     }
 
     synchronized View create(String brief) { return create(brief, defaults); }
@@ -82,6 +94,30 @@ class StudioService {
         save(episode);
         return view(episode);
     }
+
+    /**
+     * Slow AI and FFmpeg work runs independently from the browser request. The saved status is
+     * returned immediately so the UI can poll it and safely survive a refresh or a closed tab.
+     */
+    synchronized View startGenerate(UUID id) { return start(id, "GENERATING", () -> generate(id)); }
+    synchronized View startReview(UUID id) { return start(id, "REVIEWING", () -> review(id)); }
+    synchronized View startNarration(UUID id) { return start(id, "NARRATING", () -> narration(id)); }
+    synchronized View startGroundNarration(UUID id) { return start(id, "NARRATION_GROUNDING", () -> groundNarration(id)); }
+    synchronized View startArtwork(UUID id) { return start(id, "PREPARING_ART", () -> artwork(id)); }
+    synchronized View startSpeech(UUID id) { return start(id, "SPEAKING", () -> speech(id)); }
+    synchronized View startRender(UUID id, boolean draft) { return start(id, "RENDERING", () -> render(id, draft)); }
+    synchronized View startRestyle(UUID id, List<SceneOverlay.Region> clues) { return start(id, "PREPARING_ART", () -> restyle(id, clues)); }
+
+    private View start(UUID id, String status, Runnable action) {
+        var episode = find(id);
+        require(!active(episode.status), "This episode is already working in the background");
+        stage(episode, status);
+        worker.execute(action);
+        return view(episode);
+    }
+
+    @PreDestroy
+    void stopWorker() { worker.shutdownNow(); }
 
     synchronized View settings(UUID id, EpisodeSettings requestedSettings) {
         requestedSettings.validate();
