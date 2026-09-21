@@ -27,6 +27,12 @@ class StudioServiceTest {
         assertThat(result.scriptModel()).isEqualTo("test-model");
         verify(ai, never()).review(any());
     }
+    @Test void recordsTheExactFailedStageForManualRecovery() {
+        when(ai.generate("Test")).thenThrow(new IllegalStateException("Provider unavailable"));
+        var result=service.generate(episode.id);
+        assertThat(result.status()).isEqualTo("FAILED");
+        assertThat(result.failedStage()).isEqualTo("GENERATING");
+    }
     @Test void cannotSpendOnImagesWithoutPassingReview() {
         episode.specJson=JsonMapper.builder().build().writeValueAsString(PilotFixtures.sample());
         assertThatThrownBy(()->service.artwork(episode.id)).hasMessageContaining("reasoning review");

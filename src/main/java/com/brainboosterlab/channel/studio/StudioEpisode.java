@@ -19,6 +19,7 @@ class StudioEpisode {
     @Column(columnDefinition = "text") String settingsJson;
     @Column(columnDefinition = "text") String stageInstructionsJson;
     @Column(columnDefinition = "text") String lastError;
+    String failedStage;
     String scriptModel;
     String responseId;
     String narrationModel;

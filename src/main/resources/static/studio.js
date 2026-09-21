@@ -39,6 +39,23 @@ function firstOpenStep(e) {
   if (!e.spec) return 0; if (!isReviewed(e)) return 1; if (!e.artworkReady) return 2; if (!e.narration) return 3;
   if (!isGrounded(e)) return 4; if (!e.speechReady) return 5; if (!e.previewReady) return 6; if (!e.approvedAt) return 7; if (!e.finalReady) return 8; return 8;
 }
+function retryDefinition(e) {
+  if (!['FAILED', 'INTERRUPTED'].includes(e?.status)) return null;
+  const recovered = {
+    GENERATING:[0, 'Retry puzzle generation', 'Send a concise recovery request. No prior puzzle content was saved.', 'generate'],
+    REVIEWING:[1, 'Retry puzzle review', 'Run the independent fairness review again using the saved puzzles.', 'review'],
+    PREPARING_ART:[2, 'Retry artwork preparation', 'Resume from saved artwork and completed visual checks where possible.', 'artwork'],
+    NARRATING:[3, 'Retry narration', 'Generate the narration again from the saved puzzles.', 'narration'],
+    NARRATION_GROUNDING:[4, 'Retry narration grounding', 'Recheck narration against the saved question frames.', 'ground-narration'],
+    SPEAKING:[5, 'Retry voice generation', 'Resume from complete local voice clips when available.', 'speech'],
+    RENDERING:[e.approvedAt ? 8 : 6, e.approvedAt ? 'Retry final video render' : 'Retry preview render', 'Render again from the saved production assets.', e.approvedAt ? 'render' : 'preview']
+  }[e.failedStage];
+  if (recovered) return recovered;
+  const inferred = firstOpenStep(e);
+  const actions = ['generate','review','artwork','narration','ground-narration','speech','preview','approve','render'];
+  const action = actions[inferred];
+  return action ? [inferred, `Retry ${STEPS[inferred][1].toLowerCase()}`, 'Resume this failed stage using all saved work.', action] : null;
+}
 
 async function request(path, method = 'POST', body) {
   const response = await fetch(api + path, {method, headers:{'Content-Type':'application/json'}, body:body === undefined ? undefined : JSON.stringify(body)});
@@ -85,6 +102,7 @@ function facts(parent, object) {
   }); parent.append(list);
 }
 function actionFor(e, index) {
+  const retry = retryDefinition(e); if (retry && retry[0] === index) return [retry[1], retry[2], retry[3], false];
   const retryingGeneration = !e.spec && e.status === 'FAILED';
   const actions = [
     !e.spec && [retryingGeneration ? 'Retry puzzle generation' : 'Generate puzzles', retryingGeneration ? 'Send a concise recovery request. No prior puzzle content was saved.' : 'Generate the puzzle script with your configured text model.', 'generate', false],

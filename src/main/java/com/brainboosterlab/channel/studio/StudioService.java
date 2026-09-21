@@ -21,7 +21,7 @@ import tools.jackson.databind.json.JsonMapper;
 class StudioService {
     record View(UUID id, String brief, String status, EpisodeSpec spec, StudioAi.Review review,
                 EpisodeNarration narration, NarrationAi.Review narrationReview, NarrationGrounding narrationGrounding, EpisodeSpeech speech,
-                String lastError, String scriptModel, String responseId, String narrationModel, String narrationResponseId,
+                String lastError, String failedStage, String scriptModel, String responseId, String narrationModel, String narrationResponseId,
                 String narrationGroundingModel, String speechModel, String speechVoice, EpisodeSettings settings, StageInstructions stageInstructions, Instant approvedAt, boolean artworkReady,
                 List<StudioAi.VisualReview> visualReviews, boolean previewReady, boolean finalReady, boolean speechReady) {}
     private final StudioRepository repository;
@@ -62,6 +62,7 @@ class StudioService {
     public synchronized void recoverInterrupted() {
         for (var episode : repository.findAll()) {
             if (active(episode.status)) {
+                episode.failedStage = episode.status;
                 episode.status = "INTERRUPTED";
                 episode.lastError = "Application stopped during work. Saved scripts and artwork are retained; retry the unfinished stage.";
                 save(episode);
@@ -358,12 +359,16 @@ class StudioService {
                         : ai.reviewFrame(dir.resolve("question-" + i + ".png"), spec.puzzles().get(i), production.textModel())));
                 Files.writeString(report, Files.readString(cached));
                 Files.writeString(dir.resolve("visual-review-" + i + ".sha256"), hash);
-                var clue = production.equals(defaults)
-                    ? ai.locateClue(dir.resolve("question-" + i + ".png"), spec.puzzles().get(i), null)
-                    : ai.locateClue(dir.resolve("question-" + i + ".png"), spec.puzzles().get(i), production.textModel());
-                var overlay = new SceneOverlay(SceneOverlay.hash(dir.resolve("art-" + i + ".png")),
-                    spec.puzzles().get(i).answerId(), clue.onArtwork());
-                Files.writeString(dir.resolve("overlay-" + i + ".json"), json.writeValueAsString(overlay));
+                Path overlayFile = dir.resolve("overlay-" + i + ".json");
+                if (Files.isRegularFile(overlayFile)) SceneOverlay.read(dir, i, spec.puzzles().get(i));
+                else {
+                    var clue = production.equals(defaults)
+                        ? ai.locateClue(dir.resolve("question-" + i + ".png"), spec.puzzles().get(i), null)
+                        : ai.locateClue(dir.resolve("question-" + i + ".png"), spec.puzzles().get(i), production.textModel());
+                    var overlay = new SceneOverlay(SceneOverlay.hash(dir.resolve("art-" + i + ".png")),
+                        spec.puzzles().get(i).answerId(), clue.onArtwork());
+                    Files.writeString(overlayFile, json.writeValueAsString(overlay));
+                }
             }
             // Question frames remain clean; answer frames are rebuilt with the precise clue ring.
             renderer.previews(spec, dir, production.channelName());
@@ -526,8 +531,9 @@ class StudioService {
         catch (Exception ignored) { return false; }
     }
     private void save(StudioEpisode e) { e.version = repository.saveAndFlush(e).version; }
-    private void stage(StudioEpisode e, String status) { e.status = status; e.lastError = null; save(e); }
+    private void stage(StudioEpisode e, String status) { e.status = status; e.lastError = null; e.failedStage = null; save(e); }
     private View failed(StudioEpisode e, Exception exception) {
+        e.failedStage = e.status;
         e.status = "FAILED";
         // Never persist raw HTTP bodies/headers, which can contain credentials or signed URLs.
         e.lastError = "OpenAIInvalidDataException".equals(exception.getClass().getSimpleName())
@@ -564,7 +570,7 @@ class StudioService {
             e.reviewJson == null ? null : json.readValue(e.reviewJson, StudioAi.Review.class),
             e.narrationJson == null ? null : json.readValue(e.narrationJson, EpisodeNarration.class),
             e.narrationReviewJson == null ? null : json.readValue(e.narrationReviewJson, NarrationAi.Review.class),
-            e.narrationGroundingJson == null ? null : json.readValue(e.narrationGroundingJson, NarrationGrounding.class), speech, e.lastError,
+            e.narrationGroundingJson == null ? null : json.readValue(e.narrationGroundingJson, NarrationGrounding.class), speech, e.lastError, e.failedStage,
             e.scriptModel, e.responseId, e.narrationModel, e.narrationResponseId, e.narrationGroundingModel, e.speechModel, e.speechVoice, settings(e), stageInstructions(e),
             e.approvedAt, ready, reviews, Files.isRegularFile(dir.resolve("preview.mp4")), Files.isRegularFile(dir.resolve("final.mp4")), speechReady);
     }
@@ -575,7 +581,7 @@ class StudioService {
             try { savedSettings = settings(episode); }
             catch (Exception alsoIgnored) { savedSettings = defaults; }
             return new View(episode.id, episode.brief, "FAILED", null, null, null, null, null, null,
-                "This older saved episode no longer matches the current puzzle format. Its files are retained, but create a new episode to continue.",
+                "This older saved episode no longer matches the current puzzle format. Its files are retained, but create a new episode to continue.", episode.failedStage,
                 episode.scriptModel, episode.responseId, episode.narrationModel, episode.narrationResponseId,
                 episode.narrationGroundingModel, episode.speechModel, episode.speechVoice, savedSettings, StageInstructions.EMPTY, episode.approvedAt,
                 false, List.of(), false, false, false);
