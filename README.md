@@ -114,10 +114,7 @@ Run tests with `mvn test` (headless graphics enabled for macOS).
 
 ```bash
 cp .env.example .env
-# Edit .env with your local values, then load it into this terminal:
-set -a
-source .env
-set +a
+# Edit .env with your local values. The application loads this ignored local file at startup.
 docker compose up -d postgres
 mvn spring-boot:run
 ```
