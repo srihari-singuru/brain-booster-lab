@@ -34,6 +34,22 @@ class StudioAi {
         }
     }
     public record VisualReview(boolean acceptable, String notes) {}
+    /** A clue rectangle returned relative to the full final 1920×1080 question frame. */
+    public record ClueLocation(double x, double y, double width, double height, String notes) {
+        SceneOverlay.Region onArtwork() {
+            // The complete 16:9 artwork is rendered inside this fixed safe scene area.
+            double left = (x * 1920 - 160) / 1600;
+            double top = (y * 1080 - 156) / 900;
+            double wide = width * 1920 / 1600;
+            double high = height * 1080 / 900;
+            if (!Double.isFinite(left + top + wide + high)) throw new IllegalArgumentException("Clue location is not finite");
+            wide = Math.max(.06, Math.min(.55, wide)); high = Math.max(.06, Math.min(.55, high));
+            left = Math.max(.01, Math.min(.99 - wide, left)); top = Math.max(.01, Math.min(.99 - high, top));
+            var region = new SceneOverlay.Region(left, top, wide, high);
+            region.validate();
+            return region;
+        }
+    }
     record Provenance(String model, String size, String quality, Instant generatedAt, String prompt, boolean placeholder) {}
     private final String generationMode;
     private final String artworkMode;
@@ -231,6 +247,34 @@ class StudioAi {
             .maxOutputTokens(6000).text(VisualReview.class).build());
         return response.output().stream().flatMap(i -> i.message().stream()).flatMap(m -> m.content().stream())
             .flatMap(c -> c.outputText().stream()).findFirst().orElseThrow();
+    }
+
+    /** Finds the real visible clue so answer frames can reveal it with a precise animated ring. */
+    ClueLocation locateClue(Path questionFrame, EpisodeSpec.Puzzle puzzle, String requestedModel) throws Exception {
+        String activeModel = requestedModel == null || requestedModel.isBlank() ? model : requestedModel.trim();
+        if (!"live".equals(generationMode)) throw new IllegalStateException("Live clue analysis is required for automatic reveal highlights");
+        String prompt = """
+            Inspect this final 1920x1080 family puzzle frame. The correct answer is OPTION %s.
+            Locate the single decisive visual clue that proves it. Return x, y, width and height normalized 0–1 against
+            the ENTIRE 1920x1080 frame, tightly enclosing the visual evidence inside the illustrated scene. Never select
+            a letter badge, title, timer, border, or decoration. The region must be suitable for a bright animated circle
+            during the answer reveal; it should not cover unrelated people or objects. If the clue is a missing shadow or
+            reflection, frame that relevant ground or mirror area. Use only visible pixels. Include a brief notes field.
+            Puzzle definition: %s
+            """.formatted(puzzle.answerId(), json.writeValueAsString(puzzle));
+        var input = EasyInputMessage.builder().role(EasyInputMessage.Role.USER)
+            .contentOfResponseInputMessageContentList(List.of(
+                ResponseInputContent.ofInputText(ResponseInputText.builder().text(prompt).build()),
+                ResponseInputContent.ofInputImage(ResponseInputImage.builder().detail(ResponseInputImage.Detail.HIGH)
+                    .imageUrl("data:image/png;base64," + Base64.getEncoder().encodeToString(Files.readAllBytes(questionFrame))).build())))
+            .build();
+        var response = client.responses().create(ResponseCreateParams.builder().model(activeModel)
+            .inputOfResponse(List.of(ResponseInputItem.ofEasyInputMessage(input))).store(false)
+            .maxOutputTokens(1000).text(ClueLocation.class).build());
+        var location = response.output().stream().flatMap(i -> i.message().stream()).flatMap(m -> m.content().stream())
+            .flatMap(c -> c.outputText().stream()).findFirst().orElseThrow();
+        location.onArtwork();
+        return location;
     }
 
     public record VisualSolution(String answerId, boolean clearForKids, String observedClue, String issues) {}

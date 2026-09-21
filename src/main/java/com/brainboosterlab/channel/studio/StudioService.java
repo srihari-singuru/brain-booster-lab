@@ -319,8 +319,11 @@ class StudioService {
             Path dir = directory(id); Files.createDirectories(dir);
             var production = settings(e);
             for (int i = 0; i < spec.puzzles().size(); i++) {
-                if (production.equals(defaults)) ai.artwork(spec.puzzles().get(i), dir, i);
-                else ai.artwork(spec.puzzles().get(i), dir, i, production.imageModel());
+                // Retrying a clue-analysis failure preserves the already purchased local artwork.
+                if (!Files.isRegularFile(dir.resolve("art-" + i + ".png"))) {
+                    if (production.equals(defaults)) ai.artwork(spec.puzzles().get(i), dir, i);
+                    else ai.artwork(spec.puzzles().get(i), dir, i, production.imageModel());
+                }
             }
             renderer.previews(spec, dir, production.channelName());
             for (int i = 0; i < spec.puzzles().size(); i++) {
@@ -332,7 +335,15 @@ class StudioService {
                         : ai.reviewFrame(dir.resolve("question-" + i + ".png"), spec.puzzles().get(i), production.textModel())));
                 Files.writeString(report, Files.readString(cached));
                 Files.writeString(dir.resolve("visual-review-" + i + ".sha256"), hash);
+                var clue = production.equals(defaults)
+                    ? ai.locateClue(dir.resolve("question-" + i + ".png"), spec.puzzles().get(i), null)
+                    : ai.locateClue(dir.resolve("question-" + i + ".png"), spec.puzzles().get(i), production.textModel());
+                var overlay = new SceneOverlay(SceneOverlay.hash(dir.resolve("art-" + i + ".png")),
+                    spec.puzzles().get(i).answerId(), clue.onArtwork());
+                Files.writeString(dir.resolve("overlay-" + i + ".json"), json.writeValueAsString(overlay));
             }
+            // Question frames remain clean; answer frames are rebuilt with the precise clue ring.
+            renderer.previews(spec, dir, production.channelName());
             // Artwork and narration grounding are deliberately separate manual gates. The
             // operator needs a chance to inspect every image before spending on grounding.
             stage(e, "ART_REVIEW");

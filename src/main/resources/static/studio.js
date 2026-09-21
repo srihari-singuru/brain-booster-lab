@@ -6,7 +6,7 @@ const STEPS = [
   ['puzzles', 'Puzzles'], ['review', 'Review'], ['artwork', 'Artwork'], ['narration', 'Narration'],
   ['grounding', 'Grounding'], ['voice', 'Voice'], ['preview', 'Preview'], ['approval', 'Approval'], ['final', 'Final video']
 ];
-let selected = location.hash.slice(1), episode = null, busy = false, step = 0, clueRegions = {};
+let selected = location.hash.slice(1), episode = null, busy = false, step = 0;
 let defaultSettings = {channelName:'BRAIN BOOSTER LAB', puzzleCount:3, textModel:'gpt-4o-mini', imageModel:'gpt-image-1', narrationModel:'gpt-4o-mini', speechModel:'gpt-4o-mini-tts', speechVoice:'cedar', speechSpeed:1};
 const by = id => document.querySelector('#' + id);
 const el = (tag, text, className) => { const node = document.createElement(tag); if (text != null) node.textContent = text; if (className) node.className = className; return node; };
@@ -23,12 +23,6 @@ function setStep(value) { step = Math.max(0, Math.min(STEPS.length - 1, value));
 function firstOpenStep(e) {
   if (!e.spec) return 0; if (!isReviewed(e)) return 1; if (!e.artworkReady) return 2; if (!e.narration) return 3;
   if (!isGrounded(e)) return 4; if (!e.speechReady) return 5; if (!e.previewReady) return 6; if (!e.approvedAt) return 7; if (!e.finalReady) return 8; return 8;
-}
-function selectedClues(e) { return clueRegions[e.id] || Array(e.spec?.puzzles?.length || 0).fill(null); }
-function placeClue(e, index, x, y) {
-  const clues = [...selectedClues(e)]; const width = .20, height = .20;
-  clues[index] = {x:Math.max(.01, Math.min(.99 - width, x - width / 2)), y:Math.max(.01, Math.min(.99 - height, y - height / 2)), width, height};
-  clueRegions[e.id] = clues; draw();
 }
 
 async function request(path, method = 'POST', body) {
@@ -147,15 +141,10 @@ function artworkOutput(e, pane) {
   outputTitle(pane, 'Generated result', 'Artwork');
   if (!e.artworkReady) return emptyOutput(pane, 'The finished question and answer images will appear here for your review.');
   const grid = el('div', null, 'art-grid'); e.spec.puzzles.forEach((puzzle, index) => {
-    const card = el('figure', null, 'art-card'); const picker = el('div', null, 'art-picker'); const image = document.createElement('img'); image.src = media(e, `question-${index}.png`); image.alt = `Puzzle ${index + 1} question artwork`; image.loading = 'lazy'; picker.append(image);
-    if (!e.approvedAt) { const clue = selectedClues(e)[index]; if (clue) { const marker = el('span', '', 'clue-marker'); marker.style.left = `${(clue.x + clue.width / 2) * 100}%`; marker.style.top = `${(clue.y + clue.height / 2) * 100}%`; picker.append(marker); } picker.onclick = event => { const rect = image.getBoundingClientRect(); placeClue(e, index, (event.clientX - rect.left) / rect.width, (event.clientY - rect.top) / rect.height); }; }
-    const caption = el('figcaption', e.approvedAt ? `Puzzle ${index + 1} · question` : `Puzzle ${index + 1} · click the decisive clue to place its answer circle`); card.append(picker, caption); grid.append(card);
+    const card = el('figure', null, 'art-card'); const image = document.createElement('img'); image.src = media(e, `question-${index}.png`); image.alt = `Puzzle ${index + 1} question artwork`; image.loading = 'lazy'; card.append(image, el('figcaption', `Puzzle ${index + 1} · question`)); grid.append(card);
     const reveal = el('figure', null, 'art-card'); const revealImage = document.createElement('img'); revealImage.src = media(e, `reveal-${index}.png`); revealImage.alt = `Puzzle ${index + 1} answer artwork with highlighted clue`; revealImage.loading = 'lazy'; reveal.append(revealImage, el('figcaption', `Puzzle ${index + 1} · answer highlight`)); grid.append(reveal);
   }); pane.append(grid);
-  if (e.approvedAt) { const revision = el('section', null, 'highlight-controls'); revision.append(el('p', 'Need to adjust the reveal?', 'output-kicker'), el('p', 'Create an editable local visual version. It reuses these saved images, then lets you place new answer circles and resume from this stage.', 'highlight-copy'));
-    addButton(revision, 'Create editable visual version', async () => { busy = true; draw(); try { const updated = await request('/' + e.id + '/visual-revision'); selected = updated.id; location.hash = selected; episode = updated; step = 2; clueRegions = {}; notice('Editable visual version created.'); } catch (error) { notice(error.message); } finally { busy = false; draw(); } }, 'secondary'); pane.append(revision);
-  } else { const clues = selectedClues(e); const highlight = el('section', null, 'highlight-controls'); highlight.append(el('p', 'Reveal highlight', 'output-kicker'), el('p', 'Click the decisive visual clue in every question image. The saved circles will appear only on the answer reveal; no artwork is sent anywhere.', 'highlight-copy'));
-    addButton(highlight, 'Save highlight circles', async () => { if (clues.some(clue => !clue)) { notice('Click the decisive clue in every question image first.'); return; } busy = true; draw(); notice('Saving reveal highlights…'); try { episode = await request('/' + e.id + '/highlight', 'POST', {clueRegions:clues}); notice('Saving locally in the background. The answer images will update automatically.'); } catch (error) { notice(error.message); } finally { busy = false; draw(); } }, 'secondary', isWorking(e)); pane.append(highlight); }
+  pane.append(el('p', 'The answer image automatically locates and circles the decisive clue during its animated reveal.', 'visual-note'));
   e.visualReviews?.forEach((review, index) => { const note = el('p', `Visual check ${index + 1}: ${review.notes || review.summary || 'completed'}`, 'visual-note'); pane.append(note); });
 }
 function narrationOutput(e, pane) {
