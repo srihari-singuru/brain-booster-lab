@@ -14,16 +14,12 @@
     <a class="previous" href="/legacy.html">Previous jobs ↗</a>
   </header>
   <main>
-    <section class="hero">
-      <div><p class="eyebrow">YOUR FAMILY-PUZZLE FACTORY</p><h1>Make every episode<br><em>clear, playful, and reviewable.</em></h1></div>
-      <p>One calm workspace for scripts, artwork, narration, voice, review, and a download-ready video. Every paid AI stage is separate and visible.</p>
-    </section>
     <section class="dashboard">
       <aside class="sidebar">
         <form id="brief-form" class="launch-card">
-          <div class="card-kicker">01 · NEW EPISODE</div><h2>Start with a creative brief</h2>
+          <div class="card-kicker">NEW EPISODE</div><h2>What would you like to make?</h2>
           <label>CHANNEL NAME<input id="channel-name" required maxlength="48" value="BRAIN BOOSTER LAB"></label>
-          <label>PUZZLES IN THIS VIDEO<select id="puzzle-count"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option><option>9</option><option>10</option></select></label>
+          <label>NUMBER OF PUZZLES<input id="puzzle-count" type="number" min="1" max="10" step="1" value="3" required></label>
           <label>EPISODE IDEA<textarea id="brief" required maxlength="4000" rows="7">Picture-first mini-mysteries for ages 6–10 watching with family. Three characters, one visible clue, a short question, and a satisfying guess. Friendly fantasy or robot surprises in everyday scenes. First puzzle builds confidence; later puzzles are slightly less obvious. No arithmetic, number patterns, long rules or tiny objects. Keep polished illustrations and warm, energetic storytelling.</textarea></label>
           <details class="advanced"><summary>Production settings <span>defaulted for you</span></summary><div class="setting-grid">
             <label>TEXT MODEL<input id="text-model" required maxlength="120"></label>
@@ -33,12 +29,12 @@
             <label>VOICE<select id="speech-voice"><option>cedar</option><option>marin</option><option>alloy</option><option>ash</option><option>ballad</option><option>coral</option><option>echo</option><option>fable</option><option>nova</option><option>onyx</option><option>sage</option><option>shimmer</option><option>verse</option></select></label>
             <label>VOICE SPEED<input id="speech-speed" type="number" min="0.75" max="1.25" step="0.01" value="1.00"></label>
           </div><p class="privacy-note">Your API key stays in your local <code>.env</code>; it is never entered or stored here.</p></details>
-          <button type="submit" class="primary wide">Create episode brief <span>→</span></button>
+          <button type="submit" class="primary wide">Create episode <span>→</span></button>
         </form>
         <div class="library-head"><div><span class="card-kicker">YOUR LIBRARY</span><h2>Episodes</h2></div><button id="refresh-library" class="icon-button" title="Refresh">↻</button></div>
         <div id="library"></div>
       </aside>
-      <section id="editor" aria-label="Episode production workspace"><div class="empty"><span>✦</span><h2>Start an episode when you’re ready.</h2><p>Your saved stages, approvals, and assets will appear here.</p></div></section>
+      <section id="editor" aria-label="Episode production workspace"><div class="empty"><span>✦</span><h2>Start an episode on the left.</h2><p>We will show one clear next step at a time.</p></div></section>
     </section>
   </main>
   <div id="notice" role="status" aria-live="polite" hidden></div>
