@@ -197,13 +197,13 @@ class SpeechAi {
     }
 
     private static String questionDirection() {
-        return "Bright, energetic adult male storyteller for children ages 6 to 10. Sound delighted, playful and naturally animated, with clear English, a natural bright medium pitch, and a steady, consistent medium pace throughout. Keep the same calm rhythm from the first word to the last. Lift the exciting words and questions, smile in the delivery, and make every discovery feel fun. Never sound flat, sleepy, robotic, like a baby voice, or like a frantic game-show host. Be confidently audible without shouting. Speak exactly the supplied words and do not add a greeting.";
+        return "Bright, energetic adult male family-challenge host for children ages 6 to 18 and parents. Sound delighted, playful and naturally animated, with clear English, a natural bright medium pitch, and a steady, consistent medium pace throughout. Keep the same confident rhythm from the first word to the last. Lift exciting words and questions, smile in the delivery, and make every discovery feel fun. Never sound flat, sleepy, robotic, babyish, classroom-like, or like a frantic game-show host. Be confidently audible without shouting. Speak exactly the supplied words and do not add a greeting.";
     }
     private static String timerDirection() {
-        return "Energetic adult male timer cue for children. Deliver the line with a bright, exciting launch, a natural bright medium pitch, and the same steady medium pace as the narration. Keep the rhythm consistent and the words crisp and clear. Say it exactly once; do not count, add sound effects, or add extra words.";
+        return "Energetic adult male timer cue for a family visual challenge. Deliver the line with a bright, exciting launch, a natural bright medium pitch, and the same steady medium pace as the narration. Keep the rhythm consistent and the words crisp and clear. Say it exactly once; do not count, add sound effects, or add extra words.";
     }
     private static String revealDirection() {
-        return "Bright, expressive adult male storyteller for children ages 6 to 10. Make the answer feel like a cheerful aha moment: warmly celebrate the discovery, then clearly explain the proof. Natural English, a natural bright medium pitch, lively emphasis, and the same steady medium pace as the question narration. Do not speed up at the reveal, no baby talk, no flat delivery, and no exaggerated game-show shouting. Speak exactly the supplied words.";
+        return "Bright, expressive adult male family-challenge host for children ages 6 to 18 and parents. Make the answer feel like a cheerful aha moment: warmly celebrate the discovery, then clearly explain the proof. Natural English, a natural bright medium pitch, lively emphasis, and the same steady medium pace as the question narration. Do not speed up at the reveal; no baby talk, flat delivery, classroom tone, or exaggerated game-show shouting. Speak exactly the supplied words.";
     }
     private static String operatorSuffix(String direction) {
         return direction == null || direction.isBlank() ? "" : " Additional operator direction: " + direction.trim();

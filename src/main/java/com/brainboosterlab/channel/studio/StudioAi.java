@@ -219,19 +219,21 @@ class StudioAi {
             Exact scene brief:
             """ + puzzle.sceneDescription();
         if ("visual".equals(puzzle.kind())) prompt = """
-            Use case: illustration-story. Create a premium 16:9 children's visual mini-mystery.
-            Keep the polished 2D mystery-comic style: natural anatomy, refined ink contours, rich teal,
-            warm amber and coral, atmospheric light, charming people and detailed but calm scenery.
+            Use case: illustration-story. Create a premium 16:9 family visual challenge for children, teens,
+            and parents. Keep the polished 2D mystery-comic style: natural anatomy, refined ink contours, rich teal,
+            warm amber and coral, atmospheric light, engaging characters, and detailed but calm scenery. It must feel
+            vibrant and intelligent, never preschool, babyish, gloomy, generic, or like stock clip-art.
             Exactly the three-to-five candidate subjects specified in the scene plan, arranged left-to-right in
             matching OPTION order. No other candidate-like people.
             Full bodies and any floor/shadow evidence fully inside the image. No cropping of clues.
             Do not reserve large text panels: the app puts a short question and OPTION badges outside the art.
             Evidence has to be genuinely visible and coherent, not simply described in a prompt.
             One clear visual clue, medium challenge for family viewers ages 6–18, readable at phone size. Every other
-            candidate must clearly lack that anomaly. Preserve equal expressions so faces don't give
-            the answer away. Friendly make-believe, never scary. No text, labels, numbers, logos,
+            candidate must clearly lack that anomaly. The clue should reward comparison and a second look, not be an
+            instant giveaway or a tiny hunt. Preserve equally plausible expressions so faces do not give the answer
+            away. Friendly make-believe, including harmless monsters or fantasy, is welcome; never scary. No text, labels, numbers, logos,
             watermarks, arrows, rings or answer highlights. No plastic 3D or preschool clip-art.
-            The following scene plan is authoritative, especially its shadows/reflections/robot details:
+            The following scene plan is authoritative, especially its stated physical evidence:
             """ + puzzle.sceneDescription();
         prompt += "\nFinal lettering constraint: do NOT draw OPTION badges or any text, even if the scene brief mentions them. The application alone adds those labels."
             + operatorSuffix(operatorDirection);
@@ -322,7 +324,8 @@ class StudioAi {
             .contentOfResponseInputMessageContentList(List.of(
                 ResponseInputContent.ofInputText(ResponseInputText.builder().text(
                     "Solve this visual mini-mystery from this image alone. Return the matching visible OPTION letter or NONE if uncertain, "
-                    + "clearForKids boolean for family viewers ages 6–18, observedClue describing only pixels actually visible, and issues. "
+                    + "clearForKids boolean for family viewers ages 6–18: true only when it is a fair medium challenge, not an instant giveaway. "
+                    + "observedClue must describe only pixels actually visible, and issues must identify any defect. "
                     + "Read the short on-screen fictional rule if present. Every option must be visible; no tiny, "
                     + "ambiguous, cropped or obscured clue. For missing-shadow/reflection puzzles inspect every "
                     + "counterparts and lighting carefully; do not assume a missing shadow just because a ghost is mentioned. "

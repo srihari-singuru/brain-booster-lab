@@ -57,27 +57,31 @@ class NarrationAi {
         String activeModel = requestedModel == null || requestedModel.isBlank() ? model : requestedModel.trim();
         if (!"live".equals(mode)) return new Draft(fixture(spec), "local-fixture", "none");
         String prompt = """
-            You are the senior story writer for Brain Booster Lab, a warm family visual-puzzle channel for ages 6–10.
-            Write natural spoken narration for the supplied episode specification. This is voice-over, not on-screen
-            copy. Make each puzzle feel like a tiny moment in one playful show: calm curiosity, a vivid but brief
-            situation, a clean invitation to notice the clue, then a satisfying and kind reveal. Vary the wording.
+            You are the senior story writer for Brain Booster Lab, an energetic family visual-challenge channel for
+            children ages 6–18 solving alongside parents. Write natural spoken narration for the supplied episode
+            specification. This is voice-over, not on-screen copy. Make each puzzle feel like a compact, playful
+            mystery in one polished show: a vivid situation, building curiosity, a clean invitation to solve, then
+            a satisfying reveal. Sound bright and intelligent for older children and parents while remaining clear
+            for younger children. Vary the storytelling rhythm and wording; never sound babyish, classroom-like, or generic.
 
             Use ONLY facts, choices, answer and explanation in the specification. Never invent visual evidence,
             character traits, extra suspects, danger, or a second puzzle rule. Do not use stock pressure such as
             'only geniuses', shame, panic, or repeated 'are you ready'. Do not say 'find something', 'look closely',
-            or promise that the viewer can see an unclear clue. Address viewers gently and inclusively.
+            or promise that the viewer can see an unclear clue. Address viewers warmly, inclusively, and with genuine
+            excitement rather than pressure.
 
             Structure rules:
             - episodeOpening: one fresh welcome, 4–28 words. It will be used in a future opening, not today’s video.
             - for each puzzle, questionLeadIn: 18–34 words, designed for about ten seconds. Set a mini-story and ask
-              the on-screen question naturally, but DO NOT name, label, or hint at the answer or clue.
+              the on-screen question naturally, but DO NOT name, label, or hint at the answer or clue. Build a little
+              anticipation without repeating the question word-for-word.
             - timerCue: 3–10 words. It plays exactly when the fixed ten-second silent timer begins. Do not count aloud.
             - revealExplanation: 18–34 words, designed for about ten seconds. State the correct choice and the exact
-              visible clue/rule that proves it, warmly and plainly.
+              visible clue/rule that proves it in a lively, natural way that rewards the viewer’s reasoning.
             - episodeClosing: one fresh 4–28-word sign-off for a future ending.
             - Never use a character name, choice label, or descriptive choice name anywhere in narration. Refer to a choice only as its supplied OPTION letter (A through E).
             - The lead-in and timer cue must never expose an option letter, the answer, or the decisive clue.
-            - The reveal must begin with the correct OPTION letter, then unpack the visible proof with enough cozy, story-like detail to reward a careful guess.
+            - The reveal must begin with the correct OPTION letter, then unpack the visible proof with enough vivid, story-like detail to reward a careful guess.
             - No headings, timestamps, stage directions, sound effects, markdown, or text intended to appear on art.
 
             Return the required structured object. Episode specification:
@@ -106,14 +110,14 @@ class NarrationAi {
             .mapToObj(i -> new Finding(i + 1, true, true, true, true,
                 "Offline fixture only; NOT an independent AI narration review.")).toList());
         String prompt = """
-            You are an exacting child-audience script editor. Critically review the supplied Brain Booster Lab
+            You are an exacting family-audience script editor for viewers ages 6–18 and parents. Critically review the supplied Brain Booster Lab
             narration against the supplied puzzle specification. Return one finding for each puzzle, in order.
             noAnswerLeak is true only when the question lead-in and timer cue do NOT reveal or strongly telegraph the
             correct option, character/name, answer letter, decisive visual clue, or explanation. storyFitsPuzzle is
             true only when the narration uses no invented evidence and the reveal correctly names the right answer and
             its exact proof, identifying the answer only as the supplied OPTION letter (A through E). It must reject any use of a choice name or label. timeFits is true only when lead-in is 18–34 words, timer cue 3–10, and reveal 18–34.
             familySafe is true only for warm, age-appropriate language with no pressure, shame, fear, stereotypes or
-            unsafe claims. Be adversarial: reject generic filler and ambiguous proof. Put concise actionable feedback
+            unsafe claims. Be adversarial: reject generic filler, babyish delivery, classroom-like explanation, and ambiguous proof. Put concise actionable feedback
             in notes. Do not rubber-stamp.
             Specification: """ + json.writeValueAsString(spec) + "\nNarration: " + json.writeValueAsString(narration) + operatorSuffix(operatorDirection);
         var response = client.responses().create(ResponseCreateParams.builder().model(activeModel).input(prompt)
@@ -151,7 +155,7 @@ class NarrationAi {
             For every puzzle, verify that the correct option and decisive clue are truly visible, readable, and
             unambiguous in the frame. Check that the narration names only the supplied OPTION letter (A through E), never
             a character name or choice label. If the frame supports the puzzle, polish the narration only as needed
-            to speak exactly what a child can fairly infer from the displayed frame. Preserve the warm 10-second
+            to speak exactly what a family viewer ages 6–18 can fairly infer from the displayed frame. Preserve the lively 10-second
             lead-in, fixed 10-second timer cue, and 10-second reveal structure. Never invent details to repair art.
 
             If any image does not prove its clue, set that finding’s visualClueConfirmed and narrationMatchesFrame
