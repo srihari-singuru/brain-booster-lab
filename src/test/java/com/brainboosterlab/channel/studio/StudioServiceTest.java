@@ -19,14 +19,13 @@ class StudioServiceTest {
         when(repository.findById(episode.id)).thenReturn(Optional.of(episode));
         when(repository.saveAndFlush(any())).thenAnswer(a->a.getArgument(0));
     }
-    @Test void failedReviewPreservesGeneratedScript() {
+    @Test void generatedScriptWaitsForManualReview() {
         when(ai.generate("Test")).thenReturn(new StudioAi.Draft(PilotFixtures.sample(),"test-model","test-response"));
-        when(ai.review(any())).thenThrow(new IllegalStateException("private upstream response must not be persisted"));
         var result=service.generate(episode.id);
-        assertThat(result.status()).isEqualTo("FAILED");
+        assertThat(result.status()).isEqualTo("SCRIPT_REVIEW");
         assertThat(result.spec()).isNotNull();
         assertThat(result.scriptModel()).isEqualTo("test-model");
-        assertThat(result.lastError()).doesNotContain("private upstream");
+        verify(ai, never()).review(any());
     }
     @Test void cannotSpendOnImagesWithoutPassingReview() {
         episode.specJson=JsonMapper.builder().build().writeValueAsString(PilotFixtures.sample());

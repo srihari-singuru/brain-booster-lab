@@ -1,25 +1,228 @@
 'use strict';
-const api='/api/v2/episodes';
-let selected=location.hash.slice(1), episode=null, busy=false, defaultSettings={channelName:'BRAIN BOOSTER LAB',puzzleCount:3,textModel:'gpt-4o-mini',imageModel:'gpt-image-1',narrationModel:'gpt-4o-mini',speechModel:'gpt-4o-mini-tts',speechVoice:'cedar',speechSpeed:1};
-const ACTIVE=new Set(['GENERATING','REVIEWING','NARRATING','NARRATION_GROUNDING','SPEAKING','PREPARING_ART','RENDERING']);
-const by=id=>document.querySelector('#'+id);
-const el=(tag,text,cls)=>{const n=document.createElement(tag);if(text!=null)n.textContent=text;if(cls)n.className=cls;return n;};
-function notice(text){const n=by('notice');n.textContent=text;n.hidden=!text;}
-function title(e){return e.spec?.title||'New puzzle episode';}
-function settings(e){return e?.settings||defaultSettings;}
-function reviewed(e){return !!e.review?.findings?.length&&e.review.findings.every(f=>f.fair&&e.spec?.puzzles?.[f.puzzleNumber-1]?.answerId===f.independentlySolvedAnswerId);}
-function grounded(e){return !!e.narrationGrounding?.findings?.length&&e.narrationGrounding.findings.every(f=>f.visualClueConfirmed&&f.narrationMatchesFrame&&f.optionOnly);}
-async function request(path,method='POST',body){const r=await fetch(api+path,{method,headers:{'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});let data;try{data=await r.json();}catch{throw new Error('The local studio returned an unexpected response. Refresh once and try again.');}if(!r.ok)throw new Error(data.detail||data.message||'Request failed');return data;}
-function fillSettings(s){for(const [id,key] of [['channel-name','channelName'],['puzzle-count','puzzleCount'],['text-model','textModel'],['image-model','imageModel'],['narration-model','narrationModel'],['speech-model','speechModel'],['speech-voice','speechVoice'],['speech-speed','speechSpeed']]){const input=by(id);if(input)input.value=s[key];}}
-function readSettings(host=document){const get=id=>host.querySelector('#'+id)||host.querySelector(`[data-setting="${id}"]`);return{channelName:get('channel-name').value.trim(),puzzleCount:Number(get('puzzle-count').value),textModel:get('text-model').value.trim(),imageModel:get('image-model').value.trim(),narrationModel:get('narration-model').value.trim(),speechModel:get('speech-model').value.trim(),speechVoice:get('speech-voice').value,speechSpeed:Number(get('speech-speed').value)};}
-async function load(){try{const all=await fetch(api).then(r=>r.json());if(all[0]?.settings){defaultSettings=all[0].settings;fillSettings(defaultSettings);}if(selected){episode=await fetch(`${api}/${selected}`).then(r=>r.json());}else episode=null;draw();}catch(error){notice('Cannot reach the local studio.');}}
-function next(e){const running={GENERATING:['Creating your puzzles','Usually 30–90 seconds. This is running in the background.'],REVIEWING:['Checking the puzzles','Usually 30–90 seconds. This is running in the background.'],PREPARING_ART:['Preparing artwork','Artwork can take a few minutes. This is running in the background.'],NARRATING:['Writing narration','Usually 30–90 seconds. This is running in the background.'],NARRATION_GROUNDING:['Checking narration against artwork','Usually 30–90 seconds. This is running in the background.'],SPEAKING:['Creating voice','Voice clips can take a few minutes. This is running in the background.'],RENDERING:['Rendering video','Rendering can take a few minutes. This is running in the background.']};if(running[e.status])return [null,running[e.status][1],null,null,running[e.status][0]];if(!e.spec)return ['Generate puzzles',`Create ${settings(e).puzzleCount} original, family-friendly puzzles.`,'generate','Generate this puzzle script using your configured model?'];if(!reviewed(e))return ['Review puzzles','Check that each puzzle is fair before artwork begins.','review'];if(!e.artworkReady)return ['Prepare artwork','Generate the illustrated puzzle images and visual checks.','artwork','Generate missing artwork using API credits?'];if(!e.narration)return ['Generate narration','Write the story-led voice-over for the finished puzzles.','narration'];if(!grounded(e))return ['Check narration against artwork','Confirm that every spoken clue matches the image.','ground-narration'];if(!e.speechReady)return ['Generate voice','Create the local voice track with your saved voice settings.','speech','Send the reviewed narration to OpenAI Speech and replace local voice clips?'];if(!e.previewReady)return ['Render preview','Create a reviewable video before approval.','preview'];if(!e.approvedAt)return ['Approve this episode','Lock this reviewed episode for final rendering.','approve','Approve this exact episode for final rendering?'];if(!e.finalReady)return ['Render final video','Create the approved, downloadable video.','render'];return [null,'Your final video is ready.'];}
-function completed(e){const phases=[['Brief',true],['Puzzles',!!e.spec],['Artwork',e.artworkReady],['Narration',!!e.narration&&grounded(e)],['Voice',e.speechReady],['Video',e.finalReady]];const bar=el('div',null,'completed');bar.append(el('strong','Completed:'));phases.filter(([,done])=>done).forEach(([name])=>bar.append(el('span',name,'complete-step')));return bar;}
-function addButton(parent,label,handler,cls='primary'){const b=el('button',label,cls);b.disabled=busy||ACTIVE.has(episode?.status);b.onclick=handler;parent.append(b);return b;}
-function episodeSettings(e){const details=el('details',null,'compact-details episode-settings');details.append(el('summary','Edit episode setup'));const grid=el('div',null,'setting-grid');for(const [label,key,type] of [['Channel name','channelName','text'],['Puzzle count','puzzleCount','number'],['Text model','textModel','text'],['Image model','imageModel','text'],['Narration model','narrationModel','text'],['Speech model','speechModel','text'],['Voice','speechVoice','select'],['Voice speed','speechSpeed','number']]){const l=el('label',label.toUpperCase());let input;if(type==='select'){input=document.createElement('select');for(const voice of ['cedar','marin','alloy','ash','ballad','coral','echo','fable','nova','onyx','sage','shimmer','verse']){const o=el('option',voice);o.value=voice;o.selected=voice===settings(e)[key];input.append(o);}}else{input=document.createElement('input');input.type=type;input.value=settings(e)[key];}input.dataset.setting=key;if(key==='puzzleCount'){input.min=1;input.max=10;input.step=1;input.disabled=!!e.spec;}if(key==='speechSpeed'){input.min=.75;input.max=1.25;input.step=.01;}l.append(input);grid.append(l);}details.append(grid);const actions=el('div',null,'settings-actions');addButton(actions,e.approvedAt?'Create settings version':'Save setup',async()=>{busy=true;draw();try{const payload={};details.querySelectorAll('[data-setting]').forEach(i=>payload[i.dataset.setting]=i.dataset.setting==='puzzleCount'?Number(i.value):i.dataset.setting==='speechSpeed'?Number(i.value):i.value.trim());const updated=await request('/'+e.id+(e.approvedAt?'/settings-revision':'/settings'),'POST',payload);selected=updated.id;location.hash=selected;await load();notice(e.approvedAt?'Settings version created.':'Setup saved.');}catch(error){notice(error.message);}finally{busy=false;draw();}},'primary');details.append(actions);return details;}
-function promptEditor(e){if(e.spec)return null;const details=el('details',null,'compact-details edit-brief');details.append(el('summary','Edit creative prompt'));const label=el('label','CREATIVE PROMPT');const text=document.createElement('textarea');text.value=e.brief;text.maxLength=4000;label.append(text);details.append(label);const actions=el('div',null,'settings-actions');addButton(actions,'Save prompt',async()=>{busy=true;draw();try{episode=await request('/'+e.id+'/brief','PUT',{brief:text.value});notice('Prompt saved.');}catch(error){notice(error.message);}finally{busy=false;draw();}},'primary');details.append(actions);return details;}
-function workflow(e){const box=el('article',null,'workflow');const header=el('header',null,'workflow-header');header.append(el('p',settings(e).channelName,'eyebrow'),el('h2',title(e)),el('span',e.status.replaceAll('_',' ').toLowerCase(),'status'));box.append(header,completed(e));if(e.lastError)box.append(el('p',e.lastError,'error'));const [label,description,path,confirmText,workingTitle]=next(e);if(workingTitle){const pane=el('section',null,'next-step working');pane.append(el('span','Working','working-label'),el('h3',workingTitle),el('p',description),el('p','This page checks automatically every few seconds. You do not need to reload it.','working-note'));box.append(pane);}else if(label){const pane=el('section',null,'next-step');pane.append(el('h3','Next: '+label),el('p',description));addButton(pane,label,async()=>{if(confirmText&&!confirm(confirmText))return;busy=true;draw();notice(label+' started in the background.');try{episode=await request('/'+e.id+'/'+path);notice('Working in the background. This page will update automatically.');}catch(error){notice(error.message);}finally{busy=false;draw();}},'primary');box.append(pane);}else{const done=el('section',null,'complete-card');done.append(el('div','✦','welcome-mark'),el('h2','Your video is ready.'),el('p','Download it now, or start the next episode.'));const download=el('a','Download final video','primary');download.href=`${api}/${e.id}/media/final.mp4`;done.append(download);box.append(done);}const prompt=promptEditor(e);if(prompt)box.append(prompt);box.append(episodeSettings(e));const actions=el('div',null,'compact-details workspace-actions');addButton(actions,'Start another episode',()=>{selected='';location.hash='';episode=null;fillSettings(settings(e));by('brief').value=e.brief;draw();},'text-button');box.append(actions);return box;}
-function draw(){const host=by('workspace'),form=by('brief-form');form.hidden=!!episode;host.replaceChildren();if(!episode){host.append(el('div','✦','welcome-mark'),el('h1','Make the next puzzle video.'),el('p','One focused step at a time.','intro'));return;}host.append(workflow(episode));}
-by('brief-form').onsubmit=async ev=>{ev.preventDefault();if(busy)return;busy=true;notice('Creating episode…');try{episode=await request('','POST',{brief:by('brief').value,settings:readSettings()});selected=episode.id;location.hash=selected;notice('Episode created.');}catch(error){notice(error.message);}finally{busy=false;draw();}};
+
+const api = '/api/v2/episodes';
+const ACTIVE = new Set(['GENERATING', 'REVIEWING', 'NARRATING', 'NARRATION_GROUNDING', 'SPEAKING', 'PREPARING_ART', 'RENDERING']);
+const STEPS = [
+  ['puzzles', 'Puzzles'], ['review', 'Review'], ['artwork', 'Artwork'], ['narration', 'Narration'],
+  ['grounding', 'Grounding'], ['voice', 'Voice'], ['preview', 'Preview'], ['approval', 'Approval'], ['final', 'Final video']
+];
+let selected = location.hash.slice(1), episode = null, busy = false, step = 0, clueRegions = {};
+let defaultSettings = {channelName:'BRAIN BOOSTER LAB', puzzleCount:3, textModel:'gpt-4o-mini', imageModel:'gpt-image-1', narrationModel:'gpt-4o-mini', speechModel:'gpt-4o-mini-tts', speechVoice:'cedar', speechSpeed:1};
+const by = id => document.querySelector('#' + id);
+const el = (tag, text, className) => { const node = document.createElement(tag); if (text != null) node.textContent = text; if (className) node.className = className; return node; };
+const settings = e => e?.settings || defaultSettings;
+const media = (e, file) => `${api}/${e.id}/media/${file}`;
+const title = e => e.spec?.title || 'New puzzle episode';
+
+function notice(text) { const node = by('notice'); node.textContent = text; node.hidden = !text; }
+function isReviewed(e) { return !!e.review?.findings?.length && e.review.findings.every(f => f.fair && e.spec?.puzzles?.[f.puzzleNumber - 1]?.answerId === f.independentlySolvedAnswerId); }
+function isGrounded(e) { return !!e.narrationGrounding?.findings?.length && e.narrationGrounding.findings.every(f => f.visualClueConfirmed && f.narrationMatchesFrame && f.optionOnly); }
+function isWorking(e) { return ACTIVE.has(e?.status); }
+function savedStep(e) { const value = Number(localStorage.getItem(`brain-booster-step-${e.id}`)); return Number.isInteger(value) && value >= 0 && value < STEPS.length ? value : firstOpenStep(e); }
+function setStep(value) { step = Math.max(0, Math.min(STEPS.length - 1, value)); if (episode) localStorage.setItem(`brain-booster-step-${episode.id}`, String(step)); draw(); }
+function firstOpenStep(e) {
+  if (!e.spec) return 0; if (!isReviewed(e)) return 1; if (!e.artworkReady) return 2; if (!e.narration) return 3;
+  if (!isGrounded(e)) return 4; if (!e.speechReady) return 5; if (!e.previewReady) return 6; if (!e.approvedAt) return 7; if (!e.finalReady) return 8; return 8;
+}
+function selectedClues(e) { return clueRegions[e.id] || Array(e.spec?.puzzles?.length || 0).fill(null); }
+function placeClue(e, index, x, y) {
+  const clues = [...selectedClues(e)]; const width = .20, height = .20;
+  clues[index] = {x:Math.max(.01, Math.min(.99 - width, x - width / 2)), y:Math.max(.01, Math.min(.99 - height, y - height / 2)), width, height};
+  clueRegions[e.id] = clues; draw();
+}
+
+async function request(path, method = 'POST', body) {
+  const response = await fetch(api + path, {method, headers:{'Content-Type':'application/json'}, body:body === undefined ? undefined : JSON.stringify(body)});
+  let data; try { data = await response.json(); } catch { throw new Error('The local studio returned an unexpected response. Refresh once and try again.'); }
+  if (!response.ok) throw new Error(data.detail || data.message || 'Request failed');
+  return data;
+}
+function fillSettings(s) {
+  for (const [id, key] of [['channel-name','channelName'], ['puzzle-count','puzzleCount'], ['text-model','textModel'], ['image-model','imageModel'], ['narration-model','narrationModel'], ['speech-model','speechModel'], ['speech-voice','speechVoice'], ['speech-speed','speechSpeed']]) {
+    const input = by(id); if (input) input.value = s[key];
+  }
+}
+function readSettings(host = document) {
+  const get = key => host.querySelector(`[data-setting="${key}"]`) || host.querySelector('#' + ({channelName:'channel-name',puzzleCount:'puzzle-count',textModel:'text-model',imageModel:'image-model',narrationModel:'narration-model',speechModel:'speech-model',speechVoice:'speech-voice',speechSpeed:'speech-speed'}[key]));
+  return {channelName:get('channelName').value.trim(), puzzleCount:Number(get('puzzleCount').value), textModel:get('textModel').value.trim(), imageModel:get('imageModel').value.trim(), narrationModel:get('narrationModel').value.trim(), speechModel:get('speechModel').value.trim(), speechVoice:get('speechVoice').value, speechSpeed:Number(get('speechSpeed').value)};
+}
+async function load() {
+  try {
+    const all = await fetch(api).then(r => r.json());
+    if (all[0]?.settings) { defaultSettings = all[0].settings; fillSettings(defaultSettings); }
+    episode = selected ? await fetch(`${api}/${selected}`).then(r => r.json()) : null;
+    if (episode) step = savedStep(episode);
+    draw();
+  } catch { notice('Cannot reach the local studio. Check that it is running, then refresh.'); }
+}
+function addButton(parent, label, handler, className = 'primary', disabled = false) {
+  const button = el('button', label, className); button.disabled = disabled || busy; button.onclick = handler; parent.append(button); return button;
+}
+function outputTitle(parent, label, description) { parent.append(el('p', label, 'output-kicker'), el('h3', description)); }
+function emptyOutput(parent, text) { parent.append(el('p', text, 'output-empty')); }
+function facts(parent, object) {
+  const list = el('dl', null, 'facts');
+  Object.entries(object).filter(([,value]) => value !== undefined && value !== null && value !== '').forEach(([key, value]) => {
+    list.append(el('dt', key.replace(/([A-Z])/g, ' $1').replace(/^./, c => c.toUpperCase())), el('dd', typeof value === 'boolean' ? (value ? 'Yes' : 'No') : String(value)));
+  }); parent.append(list);
+}
+function actionFor(e, index) {
+  const actions = [
+    !e.spec && ['Generate puzzles', 'Generate the puzzle script with your configured text model.', 'generate', false],
+    e.spec && !isReviewed(e) && ['Review puzzles', 'Run the fairness and reasoning check before artwork.', 'review', false],
+    isReviewed(e) && !e.artworkReady && ['Generate artwork', 'Create illustrations and visual-quality checks. This uses image credits.', 'artwork', true],
+    e.artworkReady && !e.narration && ['Generate narration', 'Write the story-led narration for these exact puzzles.', 'narration', false],
+    e.narration && e.artworkReady && !isGrounded(e) && ['Ground narration', 'Verify every narrated clue against the finished images.', 'ground-narration', false],
+    isGrounded(e) && !e.speechReady && ['Generate voice', 'Create local voice clips using the saved voice settings. This uses speech credits.', 'speech', true],
+    e.speechReady && !e.previewReady && ['Render preview', 'Create a reviewable video before approval.', 'preview', false],
+    e.previewReady && !e.approvedAt && ['Approve episode', 'Lock this reviewed episode for final rendering.', 'approve', true],
+    e.approvedAt && !e.finalReady && ['Render final video', 'Create the downloadable final video.', 'render', false]
+  ];
+  return actions[index] || null;
+}
+function waitingMessage(e, index) {
+  const requirements = [null, 'Generate puzzles first.', 'Pass the puzzle review before creating artwork.', 'Generate artwork before narration.', 'Generate narration and artwork before grounding.', 'Pass narration grounding before creating voice.', 'Generate voice before rendering a preview.', 'Render a preview before approval.', 'Approve the episode before final rendering.'];
+  return requirements[index];
+}
+function runAction(e, action) {
+  return async () => {
+    if (action[3] && !confirm(action[0] + '?')) return;
+    busy = true; draw(); notice(action[0] + ' started.');
+    try { episode = await request('/' + e.id + '/' + action[2]); notice('Working in the background. This page updates automatically.'); }
+    catch (error) { notice(error.message); }
+    finally { busy = false; draw(); }
+  };
+}
+function buildSettings(e) {
+  const section = el('section', null, 'settings-top');
+  section.append(el('p', 'Episode settings', 'section-label'), el('h2', settings(e).channelName));
+  const grid = el('div', null, 'settings-grid');
+  const fields = [['Channel name','channelName','text'], ['Puzzle count','puzzleCount','number'], ['Text model','textModel','text'], ['Image model','imageModel','text'], ['Narration model','narrationModel','text'], ['Speech model','speechModel','text'], ['Voice','speechVoice','select'], ['Voice speed','speechSpeed','number']];
+  for (const [label, key, type] of fields) {
+    const wrap = el('label', label.toUpperCase()); let input;
+    if (type === 'select') { input = document.createElement('select'); for (const voice of ['cedar','marin','alloy','ash','ballad','coral','echo','fable','nova','onyx','sage','shimmer','verse']) { const option = el('option', voice); option.value = voice; option.selected = voice === settings(e)[key]; input.append(option); } }
+    else { input = document.createElement('input'); input.type = type; input.value = settings(e)[key]; }
+    input.dataset.setting = key; if (key === 'puzzleCount') { input.min = 1; input.max = 10; input.step = 1; input.disabled = !!e.spec || isWorking(e); }
+    if (key === 'speechSpeed') { input.min = .75; input.max = 1.25; input.step = .01; }
+    if (isWorking(e)) input.disabled = true;
+    wrap.append(input); grid.append(wrap);
+  }
+  section.append(grid);
+  const controls = el('div', null, 'settings-controls');
+  addButton(controls, e.approvedAt ? 'Create settings version' : 'Save settings', async () => {
+    busy = true; draw(); try {
+      const updated = await request('/' + e.id + (e.approvedAt ? '/settings-revision' : '/settings'), 'POST', readSettings(section));
+      selected = updated.id; location.hash = selected; episode = updated; step = savedStep(updated); notice(e.approvedAt ? 'A settings version was created.' : 'Settings saved.');
+    } catch (error) { notice(error.message); } finally { busy = false; draw(); }
+  }, 'secondary', isWorking(e));
+  if (!e.spec) addButton(controls, 'Save prompt', async () => {
+    const prompt = section.querySelector('textarea'); if (!prompt) return; busy = true; draw(); try { episode = await request('/' + e.id + '/brief', 'PUT', {brief:prompt.value}); notice('Prompt saved.'); } catch (error) { notice(error.message); } finally { busy = false; draw(); }
+  }, 'secondary', isWorking(e));
+  section.append(controls);
+  if (!e.spec) { const label = el('label', 'CREATIVE PROMPT', 'prompt-top'); const area = document.createElement('textarea'); area.value = e.brief; area.maxLength = 4000; area.rows = 4; label.append(area); section.append(label); }
+  return section;
+}
+function buildNavigation(e) {
+  const nav = el('nav', null, 'wizard-nav'); nav.setAttribute('aria-label', 'Episode stages');
+  STEPS.forEach(([id, label], index) => { const button = el('button', null, `stage-tab${index === step ? ' active' : ''}`); button.type = 'button'; button.append(el('span', String(index + 1), 'stage-number'), el('span', label)); button.onclick = () => setStep(index); nav.append(button); });
+  return nav;
+}
+function puzzleOutput(e, pane) {
+  outputTitle(pane, 'Generated result', 'Puzzles');
+  if (!e.spec) return emptyOutput(pane, 'Your generated puzzles will appear here after you choose Generate puzzles.');
+  e.spec.puzzles.forEach((puzzle, index) => {
+    const card = el('article', null, 'puzzle-output'); card.append(el('span', `Puzzle ${index + 1}`, 'puzzle-number'), el('h4', puzzle.title || `Puzzle ${index + 1}`), el('p', puzzle.question, 'puzzle-question'));
+    const choices = el('div', null, 'choice-list'); puzzle.choices?.forEach(choice => choices.append(el('span', `${choice.id}. ${choice.label}`, choice.id === puzzle.answerId ? 'answer-choice' : ''))); card.append(choices);
+    card.append(el('p', `Answer: Option ${puzzle.answerId}`, 'answer-line'), el('p', `Reasoning: ${puzzle.explanation}`, 'reasoning-line'));
+    pane.append(card);
+  });
+}
+function reviewOutput(e, pane) {
+  outputTitle(pane, 'Generated result', 'Puzzle review');
+  if (!e.review) return emptyOutput(pane, 'The independent fairness review will appear here.');
+  const pass = isReviewed(e); pane.append(el('p', pass ? 'All puzzles passed the independent review.' : 'One or more puzzles need changes before artwork.', pass ? 'pass-note' : 'warning-note'));
+  e.review.findings?.forEach(f => { const card = el('article', null, 'finding'); card.append(el('h4', `Puzzle ${f.puzzleNumber} — ${f.fair ? 'Passed' : 'Needs changes'}`)); facts(card, {IndependentlySolvedAnswerId:f.independentlySolvedAnswerId, Fair:f.fair, Notes:f.notes || f.reasoning || ''}); pane.append(card); });
+}
+function artworkOutput(e, pane) {
+  outputTitle(pane, 'Generated result', 'Artwork');
+  if (!e.artworkReady) return emptyOutput(pane, 'The finished question and answer images will appear here for your review.');
+  const grid = el('div', null, 'art-grid'); e.spec.puzzles.forEach((puzzle, index) => {
+    const card = el('figure', null, 'art-card'); const picker = el('div', null, 'art-picker'); const image = document.createElement('img'); image.src = media(e, `question-${index}.png`); image.alt = `Puzzle ${index + 1} question artwork`; image.loading = 'lazy'; picker.append(image);
+    if (!e.approvedAt) { const clue = selectedClues(e)[index]; if (clue) { const marker = el('span', '', 'clue-marker'); marker.style.left = `${(clue.x + clue.width / 2) * 100}%`; marker.style.top = `${(clue.y + clue.height / 2) * 100}%`; picker.append(marker); } picker.onclick = event => { const rect = image.getBoundingClientRect(); placeClue(e, index, (event.clientX - rect.left) / rect.width, (event.clientY - rect.top) / rect.height); }; }
+    const caption = el('figcaption', e.approvedAt ? `Puzzle ${index + 1} · question` : `Puzzle ${index + 1} · click the decisive clue to place its answer circle`); card.append(picker, caption); grid.append(card);
+    const reveal = el('figure', null, 'art-card'); const revealImage = document.createElement('img'); revealImage.src = media(e, `reveal-${index}.png`); revealImage.alt = `Puzzle ${index + 1} answer artwork with highlighted clue`; revealImage.loading = 'lazy'; reveal.append(revealImage, el('figcaption', `Puzzle ${index + 1} · answer highlight`)); grid.append(reveal);
+  }); pane.append(grid);
+  if (e.approvedAt) { const revision = el('section', null, 'highlight-controls'); revision.append(el('p', 'Need to adjust the reveal?', 'output-kicker'), el('p', 'Create an editable local visual version. It reuses these saved images, then lets you place new answer circles and resume from this stage.', 'highlight-copy'));
+    addButton(revision, 'Create editable visual version', async () => { busy = true; draw(); try { const updated = await request('/' + e.id + '/visual-revision'); selected = updated.id; location.hash = selected; episode = updated; step = 2; clueRegions = {}; notice('Editable visual version created.'); } catch (error) { notice(error.message); } finally { busy = false; draw(); } }, 'secondary'); pane.append(revision);
+  } else { const clues = selectedClues(e); const highlight = el('section', null, 'highlight-controls'); highlight.append(el('p', 'Reveal highlight', 'output-kicker'), el('p', 'Click the decisive visual clue in every question image. The saved circles will appear only on the answer reveal; no artwork is sent anywhere.', 'highlight-copy'));
+    addButton(highlight, 'Save highlight circles', async () => { if (clues.some(clue => !clue)) { notice('Click the decisive clue in every question image first.'); return; } busy = true; draw(); notice('Saving reveal highlights…'); try { episode = await request('/' + e.id + '/highlight', 'POST', {clueRegions:clues}); notice('Saving locally in the background. The answer images will update automatically.'); } catch (error) { notice(error.message); } finally { busy = false; draw(); } }, 'secondary', isWorking(e)); pane.append(highlight); }
+  e.visualReviews?.forEach((review, index) => { const note = el('p', `Visual check ${index + 1}: ${review.notes || review.summary || 'completed'}`, 'visual-note'); pane.append(note); });
+}
+function narrationOutput(e, pane) {
+  outputTitle(pane, 'Generated result', 'Narration script');
+  if (!e.narration) return emptyOutput(pane, 'The narration script will appear here before any speech is generated.');
+  if (e.narration.episodeOpening) pane.append(el('p', e.narration.episodeOpening, 'script-opening'));
+  e.narration.puzzles?.forEach(beat => { const card = el('article', null, 'script-card'); card.append(el('h4', `Puzzle ${beat.puzzleNumber}`)); [['Question', beat.questionLeadIn], ['Timer', beat.timerCue], ['Answer', beat.revealExplanation]].forEach(([label, value]) => { const line = el('p'); line.append(el('strong', label + ': '), document.createTextNode(value)); card.append(line); }); pane.append(card); });
+  if (e.narration.episodeClosing) pane.append(el('p', e.narration.episodeClosing, 'script-closing'));
+  if (e.narrationReview) pane.append(el('p', 'Narration review completed.', 'pass-note'));
+}
+function groundingOutput(e, pane) {
+  outputTitle(pane, 'Generated result', 'Narration grounding');
+  if (!e.narrationGrounding) return emptyOutput(pane, 'The visual grounding findings will appear here.');
+  const pass = isGrounded(e); pane.append(el('p', pass ? 'Every narration clue matches the completed artwork.' : 'Grounding found an issue that needs review.', pass ? 'pass-note' : 'warning-note'));
+  e.narrationGrounding.findings?.forEach(f => { const card = el('article', null, 'finding'); card.append(el('h4', `Puzzle ${f.puzzleNumber}`)); facts(card, {VisualClueConfirmed:f.visualClueConfirmed, NarrationMatchesFrame:f.narrationMatchesFrame, OptionOnly:f.optionOnly, Notes:f.notes}); pane.append(card); });
+}
+function voiceOutput(e, pane) {
+  outputTitle(pane, 'Generated result', 'Voice clips');
+  if (!e.speechReady) return emptyOutput(pane, 'The generated voice track will appear here.');
+  const audio = document.createElement('audio'); audio.controls = true; audio.src = media(e, 'speech.m4a'); pane.append(audio, el('p', `Voice: ${e.speechVoice || settings(e).speechVoice} · speed ${settings(e).speechSpeed}×`, 'media-caption'));
+  e.speech?.puzzles?.forEach(track => pane.append(el('p', `Puzzle ${track.puzzleNumber}: question ${Number(track.questionSeconds).toFixed(1)}s · timer ${Number(track.timerSeconds).toFixed(1)}s · answer ${Number(track.revealSeconds).toFixed(1)}s`, 'track-line')));
+}
+function videoOutput(e, pane, kind) {
+  const final = kind === 'final'; outputTitle(pane, 'Generated result', final ? 'Final video' : 'Preview video');
+  const ready = final ? e.finalReady : e.previewReady; if (!ready) return emptyOutput(pane, final ? 'The approved final video will appear here.' : 'The reviewable preview video will appear here.');
+  const video = document.createElement('video'); video.controls = true; video.preload = 'metadata'; video.src = media(e, final ? 'final.mp4' : 'preview.mp4'); pane.append(video);
+  const download = el('a', final ? 'Download final video' : 'Open preview video', 'secondary link-button'); download.href = video.src; download.target = '_blank'; pane.append(download);
+}
+function approvalOutput(e, pane) {
+  outputTitle(pane, 'Generated result', 'Approval');
+  if (!e.approvedAt) return emptyOutput(pane, 'Approve only after you have reviewed the preview video, voice, narration, and artwork.');
+  pane.append(el('p', `Approved on ${new Date(e.approvedAt).toLocaleString()}. This exact episode is locked for final rendering.`, 'pass-note'));
+}
+function stageOutput(e, index) {
+  const output = el('section', null, 'stage-output');
+  const renderers = [
+    () => puzzleOutput(e, output), () => reviewOutput(e, output), () => artworkOutput(e, output),
+    () => narrationOutput(e, output), () => groundingOutput(e, output), () => voiceOutput(e, output),
+    () => videoOutput(e, output, 'preview'), () => approvalOutput(e, output), () => videoOutput(e, output, 'final')
+  ];
+  renderers[index]();
+  return output;
+}
+function stagePane(e) {
+  const [id, label] = STEPS[step]; const pane = el('section', null, 'stage-pane'); pane.append(el('p', `Stage ${step + 1} of ${STEPS.length}`, 'section-label'), el('h2', label));
+  const action = actionFor(e, step), working = isWorking(e);
+  if (working) {
+    pane.append(el('p', 'Working in the background. The action button is disabled until this step finishes; you can still review earlier and later results.', 'working-copy'));
+  } else if (action) {
+    pane.append(el('p', action[1], 'stage-description'));
+    addButton(pane, action[0], runAction(e, action), 'primary');
+  } else if (!e.finalReady && waitingMessage(e, step)) pane.append(el('p', waitingMessage(e, step), 'stage-description'));
+  else if (e.finalReady && step === 8) pane.append(el('p', 'Your final video is ready to watch or download below.', 'stage-description'));
+  const controls = el('div', null, 'stage-controls'); addButton(controls, 'Previous', () => setStep(step - 1), 'secondary', step === 0); addButton(controls, step === STEPS.length - 1 ? 'Back to first stage' : 'Next', () => setStep(step === STEPS.length - 1 ? 0 : step + 1), 'secondary'); pane.append(controls);
+  return pane;
+}
+function workflow(e) {
+  const shell = el('article', null, 'workflow'); const header = el('header', null, 'workflow-header'); header.append(el('p', settings(e).channelName, 'eyebrow'), el('h1', title(e)), el('p', `Status: ${e.status.replaceAll('_', ' ').toLowerCase()}`, 'status')); shell.append(header);
+  if (e.lastError) shell.append(el('p', e.lastError, 'error'));
+  shell.append(buildSettings(e), buildNavigation(e), stagePane(e), stageOutput(e, step));
+  const footer = el('div', null, 'episode-footer'); addButton(footer, 'Start another episode', () => { selected = ''; location.hash = ''; episode = null; fillSettings(settings(e)); by('brief').value = e.brief; draw(); }, 'text-button'); shell.append(footer); return shell;
+}
+function draw() {
+  const host = by('workspace'), form = by('brief-form'), home = document.querySelector('.home'); form.hidden = !!episode; home.classList.toggle('episode-open', !!episode); host.replaceChildren();
+  if (!episode) { host.append(el('div', '✦', 'welcome-mark'), el('h1', 'Make the next puzzle video.'), el('p', 'Start with the channel, puzzle count, and creative prompt.', 'intro')); return; }
+  host.append(workflow(episode));
+}
+by('brief-form').onsubmit = async event => { event.preventDefault(); if (busy) return; busy = true; notice('Creating episode…'); try { episode = await request('', 'POST', {brief:by('brief').value, settings:readSettings()}); selected = episode.id; location.hash = selected; step = 0; localStorage.setItem(`brain-booster-step-${selected}`, '0'); notice('Episode created. Generate puzzles when you are ready.'); } catch (error) { notice(error.message); } finally { busy = false; draw(); } };
 load();
-setInterval(async()=>{if(!busy&&episode&&ACTIVE.has(episode.status)){try{const wasWorking=ACTIVE.has(episode.status),response=await fetch(`${api}/${episode.id}`);if(!response.ok)throw new Error();episode=await response.json();if(wasWorking&&!ACTIVE.has(episode.status))notice('');draw();}catch{notice('Cannot refresh this running episode. Check your local server, then refresh once.');}}},3000);
+setInterval(async () => { if (!busy && episode && isWorking(episode)) { try { const wasWorking = true; const response = await fetch(`${api}/${episode.id}`); if (!response.ok) throw new Error(); episode = await response.json(); if (wasWorking && !isWorking(episode)) notice('Step finished. Review the result below, then choose the next action when ready.'); draw(); } catch { notice('Cannot refresh this running episode. Check your local server, then refresh.'); } } }, 3000);

@@ -106,7 +106,11 @@ class StudioService {
     synchronized View startArtwork(UUID id) { return start(id, "PREPARING_ART", () -> artwork(id)); }
     synchronized View startSpeech(UUID id) { return start(id, "SPEAKING", () -> speech(id)); }
     synchronized View startRender(UUID id, boolean draft) { return start(id, "RENDERING", () -> render(id, draft)); }
+    synchronized View startHighlight(UUID id, List<SceneOverlay.Region> clues) { return start(id, "PREPARING_ART", () -> highlight(id, clues)); }
     synchronized View startRestyle(UUID id, List<SceneOverlay.Region> clues) { return start(id, "PREPARING_ART", () -> restyle(id, clues)); }
+
+    /** Creates an editable local copy of delivered artwork without regenerating or uploading images. */
+    synchronized View visualRevision(UUID id) { return restyle(id); }
 
     private View start(UUID id, String status, Runnable action) {
         var episode = find(id);
@@ -233,9 +237,10 @@ class StudioService {
             var draft = production.equals(defaults) ? ai.generate(e.brief) : ai.generate(e.brief, production.puzzleCount(), production.textModel());
             e.specJson = json.writeValueAsString(draft.spec());
             e.scriptModel = draft.model(); e.responseId = draft.responseId();
-            stage(e, "SCRIPT_REVIEW"); // Preserve the paid script even if the independent review fails.
-            View reviewed = review(id);
-            return reviewed.review() != null && reviewed.review().passes(draft.spec()) ? narration(id) : reviewed;
+            // Each production step is an explicit user decision. Preserve the generated script
+            // and wait here for the user to inspect it and manually request its review.
+            stage(e, "SCRIPT_REVIEW");
+            return view(e);
         } catch (Exception ex) { return failed(e, ex); }
     }
 
@@ -327,7 +332,33 @@ class StudioService {
                 Files.writeString(report, Files.readString(cached));
                 Files.writeString(dir.resolve("visual-review-" + i + ".sha256"), hash);
             }
-            if (e.narrationJson != null) return groundNarration(id);
+            // Artwork and narration grounding are deliberately separate manual gates. The
+            // operator needs a chance to inspect every image before spending on grounding.
+            stage(e, "ART_REVIEW");
+            return view(e);
+        } catch (Exception ex) { return failed(e, ex); }
+    }
+
+    /** Stores operator-selected clue circles locally, then refreshes only the deterministic frame assets. */
+    synchronized View highlight(UUID id, List<SceneOverlay.Region> clues) {
+        StudioEpisode e = find(id);
+        require(e.approvedAt == null, "Approved episode is immutable; create a revision to change it");
+        var spec = spec(e);
+        require(view(e).artworkReady(), "Prepare artwork before placing reveal highlights");
+        require(clues != null && clues.size() == spec.puzzles().size(), "Place one reveal highlight for every puzzle");
+        clues.forEach(SceneOverlay.Region::validate);
+        stage(e, "PREPARING_ART");
+        try {
+            Path dir = directory(id);
+            for (int i = 0; i < spec.puzzles().size(); i++) {
+                var overlay = new SceneOverlay(SceneOverlay.hash(dir.resolve("art-" + i + ".png")),
+                    spec.puzzles().get(i).answerId(), clues.get(i));
+                Files.writeString(dir.resolve("overlay-" + i + ".json"), json.writeValueAsString(overlay));
+            }
+            renderer.previews(spec, dir, settings(e).channelName());
+            // New reveal treatment must be watched again; source art, narration and voice stay intact.
+            Files.deleteIfExists(dir.resolve("preview.mp4"));
+            Files.deleteIfExists(dir.resolve("final.mp4"));
             stage(e, "ART_REVIEW");
             return view(e);
         } catch (Exception ex) { return failed(e, ex); }

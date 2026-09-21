@@ -36,6 +36,11 @@ class StudioController {
     @PostMapping(value = "/{id}/restyle", consumes = "application/json") StudioService.View restyle(@PathVariable UUID id,
         @RequestBody(required = false) RestyleOptions options) { return studio.startRestyle(id, options == null ? null : options.clueRegions()); }
     @PostMapping(value = "/{id}/artwork", consumes = "application/json") StudioService.View artwork(@PathVariable UUID id) { return studio.startArtwork(id); }
+    @PostMapping(value = "/{id}/highlight", consumes = "application/json") StudioService.View highlight(@PathVariable UUID id,
+        @RequestBody RestyleOptions options) { return studio.startHighlight(id, options == null ? null : options.clueRegions()); }
+    @PostMapping(value = "/{id}/visual-revision", consumes = "application/json") StudioService.View visualRevision(@PathVariable UUID id) {
+        return studio.visualRevision(id);
+    }
     @PostMapping(value = "/{id}/approve", consumes = "application/json") StudioService.View approve(@PathVariable UUID id) { return studio.approve(id); }
     @PostMapping(value = "/{id}/preview", consumes = "application/json") StudioService.View preview(@PathVariable UUID id) { return studio.startRender(id, true); }
     @PostMapping(value = "/{id}/render", consumes = "application/json") StudioService.View render(@PathVariable UUID id) { return studio.startRender(id, false); }
