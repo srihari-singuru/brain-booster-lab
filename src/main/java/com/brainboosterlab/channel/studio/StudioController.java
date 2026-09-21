@@ -40,6 +40,9 @@ class StudioController {
     }
     @PostMapping(value = "/{id}/narration", consumes = "application/json") StudioService.View narration(@PathVariable UUID id) { return studio.startNarration(id); }
     @PostMapping(value = "/{id}/ground-narration", consumes = "application/json") StudioService.View groundNarration(@PathVariable UUID id) { return studio.startGroundNarration(id); }
+    @PostMapping(value = "/{id}/continue-with-grounding-warnings", consumes = "application/json") StudioService.View continueWithGroundingWarnings(@PathVariable UUID id) {
+        return studio.continueWithGroundingWarnings(id);
+    }
     @PostMapping(value = "/{id}/speech", consumes = "application/json") StudioService.View speech(@PathVariable UUID id) { return studio.startSpeech(id); }
     @PostMapping(value = "/{id}/revise", consumes = "application/json") StudioService.View revise(@PathVariable UUID id, @RequestBody EpisodeSpec spec) { return studio.revise(id, spec); }
     @PostMapping(value = "/{id}/restyle", consumes = "application/json") StudioService.View restyle(@PathVariable UUID id,

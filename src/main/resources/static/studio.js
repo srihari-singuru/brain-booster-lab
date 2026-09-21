@@ -27,6 +27,8 @@ function isReviewed(e) { return !!e.review?.findings?.length && e.review.finding
 function reviewCanBeOverridden(e) { return !!e.review?.findings?.length && e.review.findings.length === e.spec?.puzzles?.length && e.review.findings.every(f => e.spec?.puzzles?.[f.puzzleNumber - 1]?.answerId === f.independentlySolvedAnswerId); }
 function reviewGatePassed(e) { return isReviewed(e) || !!e.puzzleReviewOverridden; }
 function isGrounded(e) { return !!e.narrationGrounding?.findings?.length && e.narrationGrounding.findings.every(f => f.visualClueConfirmed && f.narrationMatchesFrame && f.optionOnly); }
+function groundingCanBeOverridden(e) { return !!e.narrationGrounding?.findings?.length && e.narrationGrounding.findings.length === e.spec?.puzzles?.length && e.narrationGrounding.findings.every(f => f.optionOnly); }
+function groundingGatePassed(e) { return isGrounded(e) || !!e.narrationGroundingOverridden; }
 function isWorking(e) { return ACTIVE.has(e?.status); }
 function actionUsesAi(action) { return ['generate', 'review', 'artwork', 'narration', 'ground-narration', 'speech'].includes(action); }
 function reviewKey(e) { return `brain-booster-review-${e.id}`; }
@@ -36,13 +38,13 @@ function runningKey(e) { return `brain-booster-running-${e.id}`; }
 function runningSince(e) { const value = Number(localStorage.getItem(runningKey(e))); return value > 0 ? value : Date.now(); }
 function durationSince(e) { const elapsed = Math.max(0, Math.floor((Date.now() - runningSince(e)) / 1000)); return `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}`; }
 function deadlineNote(e) {
-  return ({GENERATING:'The request has a two-minute deadline.', REVIEWING:'The request has a two-minute deadline.', NARRATING:'The request has a two-minute deadline.', NARRATION_GROUNDING:'The request has a two-minute deadline.', PREPARING_ART:'Each puzzle gets one premium image and a conformance check. Only a detected mismatch can trigger one saved repair image; each request has a two-minute deadline.', SPEAKING:'Each voice request has a 90-second deadline; complete local clips are reused.', RENDERING:'Local rendering has a ten-minute deadline; frames and clips remain available.'})[e.status] || 'This action has a saved recovery path.';
+  return ({GENERATING:'The request has a two-minute deadline.', REVIEWING:'The request has a two-minute deadline.', NARRATING:'The request has a two-minute deadline.', NARRATION_GROUNDING:'The request has a two-minute deadline.', PREPARING_ART:'Each puzzle gets one high-quality image and a conformance check. Only a detected mismatch can trigger one saved repair image; each request has a two-minute deadline.', SPEAKING:'Each voice request has a 90-second deadline; complete local clips are reused.', RENDERING:'Local rendering has a ten-minute deadline; frames and clips remain available.'})[e.status] || 'This action has a saved recovery path.';
 }
 function savedStep(e) { const value = Number(localStorage.getItem(`brain-booster-step-${e.id}`)); return Number.isInteger(value) && value >= 0 && value < STEPS.length ? value : firstOpenStep(e); }
 function setStep(value) { step = Math.max(0, Math.min(STEPS.length - 1, value)); if (episode) localStorage.setItem(`brain-booster-step-${episode.id}`, String(step)); draw(); }
 function firstOpenStep(e) {
   if (!e.spec) return 0; if (!reviewGatePassed(e)) return 1; if (!e.artworkReady || !e.artworkSelectionFinalized) return 2; if (!e.narration) return 3;
-  if (!isGrounded(e)) return 4; if (!e.speechReady) return 5; if (!e.previewReady) return 6; if (!e.approvedAt) return 7; if (!e.finalReady) return 8; return 8;
+  if (!groundingGatePassed(e)) return 4; if (!e.speechReady) return 5; if (!e.previewReady) return 6; if (!e.approvedAt) return 7; if (!e.finalReady) return 8; return 8;
 }
 function retryDefinition(e) {
   if (!['FAILED', 'INTERRUPTED'].includes(e?.status)) return null;
@@ -114,8 +116,8 @@ function actionFor(e, index) {
     e.spec && !reviewGatePassed(e) && [e.review ? 'Run puzzle review again' : 'Review puzzles', e.review ? 'Run the fairness and reasoning check again using the saved puzzles.' : 'Run the fairness and reasoning check before artwork.', 'review', false],
     reviewGatePassed(e) && !e.artworkReady && ['Generate artwork', 'Create clean illustrations, then check candidate order and the clue before the blind review. A detected mismatch may use one repair image credit for that puzzle.', 'artwork', true],
     e.artworkReady && e.artworkSelectionFinalized && !e.narration && ['Generate narration', 'Write the story-led narration for these selected puzzles only.', 'narration', false],
-    e.narration && e.artworkReady && !isGrounded(e) && ['Ground narration', 'Verify every narrated clue against the finished images.', 'ground-narration', false],
-    isGrounded(e) && !e.speechReady && ['Generate voice', 'Create local voice clips using the saved voice settings. This uses speech credits.', 'speech', true],
+    e.narration && e.artworkReady && !groundingGatePassed(e) && ['Ground narration', 'Verify every narrated clue against the finished images.', 'ground-narration', false],
+    groundingGatePassed(e) && !e.speechReady && ['Generate voice', 'Create local voice clips using the saved voice settings. This uses speech credits.', 'speech', true],
     e.speechReady && !e.previewReady && ['Render preview', 'Create a reviewable video before approval.', 'preview', false],
     e.previewReady && !e.approvedAt && ['Approve episode', 'Lock this reviewed episode for final rendering.', 'approve', false],
     e.approvedAt && !e.finalReady && ['Render final video', 'Create the downloadable final video.', 'render', false]
@@ -123,7 +125,7 @@ function actionFor(e, index) {
   return actions[index] || null;
 }
 function waitingMessage(e, index) {
-  const requirements = [null, 'Generate puzzles first.', 'Complete the puzzle review or deliberately continue with its warnings before creating artwork.', 'Choose the final puzzle set after artwork, then generate narration.', 'Generate narration and artwork before grounding.', 'Pass narration grounding before creating voice.', 'Generate voice before rendering a preview.', 'Render a preview before approval.', 'Approve the episode before final rendering.'];
+  const requirements = [null, 'Generate puzzles first.', 'Complete the puzzle review or deliberately continue with its warnings before creating artwork.', 'Choose the final puzzle set after artwork, then generate narration.', 'Generate narration and artwork before grounding.', 'Pass narration grounding or deliberately continue with its saved warnings before creating voice.', 'Generate voice before rendering a preview.', 'Render a preview before approval.', 'Approve the episode before final rendering.'];
   return requirements[index];
 }
 function instructionKey(action) { return ({generate:'generate',review:'review',artwork:'artwork',narration:'narration','ground-narration':'grounding',speech:'speech'})[action]; }
@@ -167,6 +169,30 @@ function reviewDecision(e) {
   }
   box.append(el('h3', 'Choose the next path'), el('p', 'The reviewer agrees with every answer, but flagged quality concerns. You can run the review again, or continue with these saved warnings. Continuing does not make an OpenAI call.'));
   addButton(box, 'Continue with review warnings', continueWithReviewWarnings(e), 'secondary', isWorking(e));
+  return box;
+}
+function continueWithGroundingWarnings(e) {
+  return async () => {
+    if (busy) return;
+    busy = true; draw(); notice('Saving your decision…');
+    try {
+      episode = await request('/' + e.id + '/continue-with-grounding-warnings');
+      step = firstOpenStep(episode);
+      localStorage.setItem(`brain-booster-step-${episode.id}`, String(step));
+      notice('Grounding warnings accepted. You can now generate voice when ready.');
+    } catch (error) { notice(error.message); }
+    finally { busy = false; draw(); }
+  };
+}
+function groundingDecision(e) {
+  if (!e.narrationGrounding || groundingGatePassed(e)) return null;
+  const box = el('aside', null, 'review-decision');
+  if (!groundingCanBeOverridden(e)) {
+    box.append(el('h3', 'Do not continue yet'), el('p', 'Grounding is incomplete or the narration does not use OPTION letters only. Fix this before creating voice.'));
+    return box;
+  }
+  box.append(el('h3', 'Choose the next path'), el('p', 'The grounding editor found visual or wording concerns, but OPTION-only narration is intact. You can ground again, or consciously continue with these saved warnings. Continuing makes no OpenAI call.'));
+  addButton(box, 'Continue with grounding warnings', continueWithGroundingWarnings(e), 'secondary', isWorking(e));
   return box;
 }
 function selectionKey(e) { return `brain-booster-artwork-selection-${e.id}`; }
@@ -298,7 +324,8 @@ function narrationOutput(e, pane) {
 function groundingOutput(e, pane) {
   outputTitle(pane, 'Generated result', 'Narration grounding');
   if (!e.narrationGrounding) return emptyOutput(pane, 'The visual grounding findings will appear here.');
-  const pass = isGrounded(e); pane.append(el('p', pass ? 'Every narration clue matches the completed artwork.' : 'Grounding found an issue that needs review.', pass ? 'pass-note' : 'warning-note'));
+  const pass = isGrounded(e), overridden = !!e.narrationGroundingOverridden;
+  pane.append(el('p', pass ? 'Every narration clue matches the completed artwork.' : overridden ? 'You chose to continue with the saved grounding warnings.' : 'Grounding found an issue that needs review.', pass || overridden ? 'pass-note' : 'warning-note'));
   e.narrationGrounding.findings?.forEach(f => { const card = el('article', null, 'finding'); card.append(el('h4', `Puzzle ${f.puzzleNumber}`)); facts(card, {VisualClueConfirmed:f.visualClueConfirmed, NarrationMatchesFrame:f.narrationMatchesFrame, OptionOnly:f.optionOnly, Notes:f.notes}); pane.append(card); });
 }
 function voiceOutput(e, pane) {
@@ -336,6 +363,7 @@ function stagePane(e) {
   } else if (action) {
     pane.append(el('p', action[1], 'stage-description'));
     if (action[2] === 'review') { const decision = reviewDecision(e); if (decision) pane.append(decision); }
+    if (action[2] === 'ground-narration') { const decision = groundingDecision(e); if (decision) pane.append(decision); }
     const direction = stageDirection(e, action[2]); if (direction) pane.append(direction);
     pane.append(actionPreflight(e, action));
     if (action[2] === 'approve') pane.append(approvalChecklist(e));

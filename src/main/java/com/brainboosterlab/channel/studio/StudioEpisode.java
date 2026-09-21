@@ -17,6 +17,7 @@ class StudioEpisode {
     @Column(columnDefinition = "text") String narrationJson;
     @Column(columnDefinition = "text") String narrationReviewJson;
     @Column(columnDefinition = "text") String narrationGroundingJson;
+    @Column(nullable = false) boolean narrationGroundingOverridden;
     @Column(columnDefinition = "text") String speechJson;
     @Column(columnDefinition = "text") String settingsJson;
     @Column(columnDefinition = "text") String stageInstructionsJson;

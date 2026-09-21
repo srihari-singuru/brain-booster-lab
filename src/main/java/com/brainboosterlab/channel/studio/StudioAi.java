@@ -36,6 +36,8 @@ class StudioAi {
         }
     }
     public record VisualReview(boolean acceptable, String notes) {}
+    /** One vision request both solves the delivered frame and locates its visible proof. */
+    record VisualInspection(VisualReview review, ClueLocation clue, boolean answerMatches) {}
     /** Checks conformance to the scene plan before the independent blind solver sees the delivered frame. */
     public record ArtworkConformance(boolean acceptable, String repairBrief, String notes) {}
     /** A clue rectangle returned relative to the full final 1920×1080 question frame. */
@@ -195,7 +197,7 @@ class StudioAi {
             // Creative drafts favor faster, lower-cost exploration; the independent review
             // below remains medium effort before artwork can proceed.
             .store(false).reasoning(Reasoning.builder().effort(ReasoningEffort.LOW).build())
-            .maxOutputTokens(puzzleCount >= 4 ? 7500 : 6500).text(EpisodeSpec.class).build());
+            .maxOutputTokens(4000).text(EpisodeSpec.class).build());
         EpisodeSpec spec = response.output().stream().flatMap(i -> i.message().stream())
             .flatMap(m -> m.content().stream()).flatMap(c -> c.outputText().stream()).findFirst()
             .orElseThrow(() -> new IllegalStateException("No complete structured episode returned"));
@@ -274,7 +276,7 @@ class StudioAi {
             + operatorSuffix(operatorDirection);
         var response = client.responses().create(ResponseCreateParams.builder().model(activeModel).input(prompt)
             .store(false).reasoning(Reasoning.builder().effort(ReasoningEffort.MEDIUM).build())
-            .maxOutputTokens(10000).text(Review.class).build());
+            .maxOutputTokens(3500).text(Review.class).build());
         return response.output().stream().flatMap(i -> i.message().stream()).flatMap(m -> m.content().stream())
             .flatMap(c -> c.outputText().stream()).findFirst().orElseThrow();
     }
@@ -373,8 +375,9 @@ class StudioAi {
         // Maximum fidelity is reserved for the current premium 2.5 models. Older image
         // models retain their portable high-quality setting rather than receiving an
         // unsupported parameter.
-        return model != null && model.startsWith("gpt-image-2.5-")
-            ? ImageGenerateParams.Quality.MAX : ImageGenerateParams.Quality.HIGH;
+        // HIGH is the production default: it protects visual quality without making
+        // every exploratory puzzle pay the premium MAX output-token rate.
+        return ImageGenerateParams.Quality.HIGH;
     }
 
     ArtworkConformance reviewArtwork(Path artwork, EpisodeSpec.Puzzle puzzle, String requestedModel) throws Exception {
@@ -400,10 +403,46 @@ class StudioAi {
             .build();
         var response = client.responses().create(ResponseCreateParams.builder().model(activeModel)
             .inputOfResponse(List.of(ResponseInputItem.ofEasyInputMessage(input))).store(false)
-            .maxOutputTokens(1800).text(ArtworkConformance.class).build());
+            .maxOutputTokens(900).text(ArtworkConformance.class).build());
         return response.output().stream().flatMap(i -> i.message().stream()).flatMap(m -> m.content().stream())
             .flatMap(c -> c.outputText().stream()).findFirst().orElseThrow();
     }
+
+    /**
+     * Blindly solve the delivered frame and return the reveal position in the same vision call.
+     * This replaces the former separate review and clue-location calls.
+     */
+    VisualInspection inspectVisualFrame(Path frame, EpisodeSpec.Puzzle puzzle, String requestedModel) throws Exception {
+        String activeModel = requestedModel == null || requestedModel.isBlank() ? model : requestedModel.trim();
+        if (!"live".equals(generationMode)) return new VisualInspection(
+            new VisualReview(false, "Offline mode: human visual review required."), new ClueLocation(.5, .5, .12, .12, "Offline fixture"), false);
+        var message = EasyInputMessage.builder().role(EasyInputMessage.Role.USER)
+            .contentOfResponseInputMessageContentList(List.of(
+                ResponseInputContent.ofInputText(ResponseInputText.builder().text("""
+                    Solve this visual mini-mystery from the image alone. Return the visible OPTION letter, or NONE if uncertain.
+                    clearForKids is true only if there is one fair, medium-difficulty answer for family viewers ages 6–18.
+                    observedClue and issues must describe only visible pixels. Reject multiple fitting answers, tiny or obscured clues,
+                    obvious anatomy defects, covered faces, excessive text, or a prematurely highlighted answer. Do not assume a missing
+                    shadow or reflection merely because a fantasy character is present. Do not infer a robot from ordinary clothing or disability.
+                    Also return x, y, width, and height normalized 0–1 against the ENTIRE 1920×1080 frame: tightly frame the decisive
+                    visual proof, never an option card, title, timer, border, or decoration. If uncertain, return 0 for all four coordinates.
+                    """).build()),
+                ResponseInputContent.ofInputImage(ResponseInputImage.builder().detail(ResponseInputImage.Detail.HIGH)
+                    .imageUrl("data:image/png;base64," + Base64.getEncoder().encodeToString(Files.readAllBytes(frame))).build())))
+            .build();
+        var result = client.responses().create(ResponseCreateParams.builder().model(activeModel)
+            .inputOfResponse(List.of(ResponseInputItem.ofEasyInputMessage(message))).store(false)
+            .maxOutputTokens(1600).text(VisualInspectionResult.class).build());
+        var solved = result.output().stream().flatMap(i -> i.message().stream()).flatMap(m -> m.content().stream())
+            .flatMap(c -> c.outputText().stream()).findFirst().orElseThrow();
+        boolean answerMatches = puzzle.answerId().equals(solved.answerId());
+        var review = new VisualReview(solved.clearForKids() && answerMatches,
+            "Blind image solver chose " + solved.answerId() + ". Visible clue: " + solved.observedClue() + " " + solved.issues());
+        return new VisualInspection(review, new ClueLocation(solved.x(), solved.y(), solved.width(), solved.height(), solved.notes()), answerMatches);
+    }
+
+    private record VisualInspectionResult(String answerId, boolean clearForKids, String observedClue, String issues,
+                                          double x, double y, double width, double height, String notes) {}
 
     VisualReview reviewFrame(Path frame, EpisodeSpec.Puzzle puzzle) throws Exception {
         return reviewFrame(frame, puzzle, model);
@@ -412,7 +451,7 @@ class StudioAi {
     VisualReview reviewFrame(Path frame, EpisodeSpec.Puzzle puzzle, String requestedModel) throws Exception {
         String activeModel = requestedModel == null || requestedModel.isBlank() ? model : requestedModel.trim();
         if (!"live".equals(generationMode)) return new VisualReview(false, "Offline mode: human visual review required.");
-        if ("visual".equals(puzzle.kind())) return reviewVisualMystery(frame, puzzle, activeModel);
+        if ("visual".equals(puzzle.kind())) return inspectVisualFrame(frame, puzzle, activeModel).review();
         String prompt = "Review this final question frame for a family reasoning video. Assess readable complete text, "
             + "natural image proportions, coherent anatomy, no obvious graphic defects, no accidental answer reveal, "
             + "and correct left-to-right mapping of every depicted OPTION subject. Text must not cover faces. Return acceptable=false "

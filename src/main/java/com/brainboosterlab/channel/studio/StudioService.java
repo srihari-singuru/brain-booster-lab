@@ -24,7 +24,7 @@ class StudioService {
                 String lastError, String failedStage, String scriptModel, String responseId, String narrationModel, String narrationResponseId,
                 String narrationGroundingModel, String speechModel, String speechVoice, EpisodeSettings settings, StageInstructions stageInstructions, Instant approvedAt, boolean artworkReady,
                 List<StudioAi.VisualReview> visualReviews, boolean previewReady, boolean finalReady, boolean speechReady, boolean puzzleReviewOverridden,
-                boolean artworkSelectionFinalized) {}
+                boolean artworkSelectionFinalized, boolean narrationGroundingOverridden) {}
     private final StudioRepository repository;
     private final StudioAi ai;
     private final NarrationAi narrator;
@@ -116,6 +116,24 @@ class StudioService {
     }
     synchronized View startNarration(UUID id) { return start(id, "NARRATING", () -> narration(id)); }
     synchronized View startGroundNarration(UUID id) { return start(id, "NARRATION_GROUNDING", () -> groundNarration(id)); }
+    synchronized View continueWithGroundingWarnings(UUID id) {
+        var episode = find(id);
+        require(episode.approvedAt == null, "Approved episode is immutable; create a revision");
+        var spec = spec(episode);
+        require(groundingAllowsWarningOverride(episode, spec),
+            "Grounding is incomplete or uses names instead of OPTION letters. Fix those safety-critical issues before continuing.");
+        var grounding = narrationGrounding(episode, spec);
+        var production = settings(episode);
+        episode.narrationGroundingOverridden = true;
+        episode.narrationJson = json.writeValueAsString(grounding.narration());
+        episode.speechJson = null; episode.speechModel = null; episode.speechVoice = null;
+        try {
+            if (production.equals(defaults)) renderer.writeNarration(spec, grounding.narration(), directory(id));
+            else renderer.writeNarration(spec, grounding.narration(), directory(id), production.channelName());
+        } catch (Exception ex) { return failed(episode, ex); }
+        stage(episode, "ART_REVIEW");
+        return view(episode);
+    }
     synchronized View startArtwork(UUID id) { return start(id, "PREPARING_ART", () -> artwork(id)); }
     synchronized View selectArtworkPuzzles(UUID id, List<Integer> requestedPuzzleNumbers) {
         var source = find(id);
@@ -371,6 +389,7 @@ class StudioService {
             e.narrationJson = json.writeValueAsString(draft.narration());
             e.narrationModel = draft.model(); e.narrationResponseId = draft.responseId();
             e.narrationGroundingJson = null; e.narrationGroundingModel = null; e.narrationGroundingResponseId = null;
+            e.narrationGroundingOverridden = false;
             e.speechJson = null; e.speechModel = null; e.speechVoice = null;
             var review = direction.isBlank()
                 ? (production.equals(defaults) ? narrator.review(spec, draft.narration()) : narrator.review(spec, draft.narration(), production.narrationModel()))
@@ -399,6 +418,7 @@ class StudioService {
             draft.grounding().validate(spec);
             e.narrationGroundingJson = json.writeValueAsString(draft.grounding());
             e.narrationGroundingModel = draft.model(); e.narrationGroundingResponseId = draft.responseId();
+            e.narrationGroundingOverridden = false;
             if (draft.grounding().passes(spec)) {
                 e.narrationJson = json.writeValueAsString(draft.grounding().narration());
                 e.speechJson = null; e.speechModel = null; e.speechVoice = null;
@@ -449,20 +469,40 @@ class StudioService {
             for (int i = 0; i < spec.puzzles().size(); i++) {
                 Path report = dir.resolve("visual-review-" + i + ".json");
                 String hash = digest(dir.resolve("question-" + i + ".png"));
-                Path cached = dir.resolve("visual-check-" + i + "-" + hash + ".json");
-                if (!Files.exists(cached)) Files.writeString(cached, json.writeValueAsString(
-                    production.equals(defaults) ? ai.reviewFrame(dir.resolve("question-" + i + ".png"), spec.puzzles().get(i))
-                        : ai.reviewFrame(dir.resolve("question-" + i + ".png"), spec.puzzles().get(i), production.textModel())));
-                Files.writeString(report, Files.readString(cached));
+                var puzzle = spec.puzzles().get(i);
+                Path cached = dir.resolve("visual-inspection-" + i + "-" + hash + ".json");
+                StudioAi.VisualReview visualReview;
+                StudioAi.VisualInspection inspection = null;
+                if ("visual".equals(puzzle.kind())) {
+                    if (!Files.exists(cached)) Files.writeString(cached, json.writeValueAsString(
+                        production.equals(defaults) ? ai.inspectVisualFrame(dir.resolve("question-" + i + ".png"), puzzle, null)
+                            : ai.inspectVisualFrame(dir.resolve("question-" + i + ".png"), puzzle, production.textModel())));
+                    inspection = json.readValue(Files.readString(cached), StudioAi.VisualInspection.class);
+                    visualReview = inspection.review();
+                } else {
+                    if (!Files.exists(cached)) Files.writeString(cached, json.writeValueAsString(
+                        production.equals(defaults) ? ai.reviewFrame(dir.resolve("question-" + i + ".png"), puzzle)
+                            : ai.reviewFrame(dir.resolve("question-" + i + ".png"), puzzle, production.textModel())));
+                    visualReview = json.readValue(Files.readString(cached), StudioAi.VisualReview.class);
+                }
+                Files.writeString(report, json.writeValueAsString(visualReview));
                 Files.writeString(dir.resolve("visual-review-" + i + ".sha256"), hash);
                 Path overlayFile = dir.resolve("overlay-" + i + ".json");
                 if (Files.isRegularFile(overlayFile)) SceneOverlay.read(dir, i, spec.puzzles().get(i));
-                else {
-                    var clue = production.equals(defaults)
-                        ? ai.locateClue(dir.resolve("question-" + i + ".png"), spec.puzzles().get(i), null)
-                        : ai.locateClue(dir.resolve("question-" + i + ".png"), spec.puzzles().get(i), production.textModel());
+                else if (inspection != null && inspection.answerMatches()) {
+                    // The same blind inspection supplies the reveal geometry; no second
+                    // high-detail vision request is needed for every puzzle.
+                    var clue = inspection.clue();
+                    clue.onArtwork();
                     var overlay = new SceneOverlay(SceneOverlay.hash(dir.resolve("art-" + i + ".png")),
-                        spec.puzzles().get(i).answerId(), clue.onArtwork());
+                        puzzle.answerId(), clue.onArtwork());
+                    Files.writeString(overlayFile, json.writeValueAsString(overlay));
+                } else if (inspection == null) {
+                    var clue = production.equals(defaults)
+                        ? ai.locateClue(dir.resolve("question-" + i + ".png"), puzzle, null)
+                        : ai.locateClue(dir.resolve("question-" + i + ".png"), puzzle, production.textModel());
+                    var overlay = new SceneOverlay(SceneOverlay.hash(dir.resolve("art-" + i + ".png")),
+                        puzzle.answerId(), clue.onArtwork());
                     Files.writeString(overlayFile, json.writeValueAsString(overlay));
                 }
             }
@@ -653,8 +693,21 @@ class StudioService {
         return speech;
     }
     private boolean narrationGroundingPasses(StudioEpisode e, EpisodeSpec spec) {
-        return e.narrationGroundingJson != null
-            && json.readValue(e.narrationGroundingJson, NarrationGrounding.class).passes(spec);
+        return e.narrationGroundingOverridden || (e.narrationGroundingJson != null
+            && json.readValue(e.narrationGroundingJson, NarrationGrounding.class).passes(spec));
+    }
+    private NarrationGrounding narrationGrounding(StudioEpisode e, EpisodeSpec spec) {
+        require(e.narrationGroundingJson != null, "Ground narration before continuing with warnings");
+        var grounding = json.readValue(e.narrationGroundingJson, NarrationGrounding.class);
+        grounding.validate(spec);
+        return grounding;
+    }
+    /** Warnings may be consciously accepted, but incomplete findings or narration that breaks OPTION-only delivery cannot. */
+    private boolean groundingAllowsWarningOverride(StudioEpisode e, EpisodeSpec spec) {
+        try {
+            var grounding = narrationGrounding(e, spec);
+            return grounding.findings().stream().allMatch(NarrationGrounding.Finding::optionOnly);
+        } catch (Exception ignored) { return false; }
     }
     private boolean existingSpeechClips(UUID id) {
         Path dir = directory(id);
@@ -713,7 +766,7 @@ class StudioService {
             e.narrationGroundingJson == null ? null : json.readValue(e.narrationGroundingJson, NarrationGrounding.class), speech, e.lastError, e.failedStage,
             e.scriptModel, e.responseId, e.narrationModel, e.narrationResponseId, e.narrationGroundingModel, e.speechModel, e.speechVoice, settings(e), stageInstructions(e),
             e.approvedAt, ready, reviews, Files.isRegularFile(dir.resolve("preview.mp4")), Files.isRegularFile(dir.resolve("final.mp4")), speechReady, e.puzzleReviewOverridden,
-            e.artworkSelectionFinalized);
+            e.artworkSelectionFinalized, e.narrationGroundingOverridden);
     }
     private View safeView(StudioEpisode episode) {
         try { return view(episode); }
@@ -725,7 +778,7 @@ class StudioService {
                 "This older saved episode no longer matches the current puzzle format. Its files are retained, but create a new episode to continue.", episode.failedStage,
                 episode.scriptModel, episode.responseId, episode.narrationModel, episode.narrationResponseId,
                 episode.narrationGroundingModel, episode.speechModel, episode.speechVoice, savedSettings, StageInstructions.EMPTY, episode.approvedAt,
-                false, List.of(), false, false, false, false, false);
+                false, List.of(), false, false, false, false, false, false);
         }
     }
 

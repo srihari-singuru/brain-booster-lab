@@ -50,4 +50,38 @@ class NarrationWorkflowTest {
         assertThat(view.narrationModel()).isEqualTo("writer-model");
         verify(renderer).writeNarration(spec, draft, directory.resolve(episode.id.toString()));
     }
+
+    @Test void creatorCanContinuePastGroundingWarningsWhenOptionOnlyDeliveryIsIntact() throws Exception {
+        StudioRepository repository = mock(StudioRepository.class);
+        StudioAi puzzles = mock(StudioAi.class);
+        NarrationAi narrator = mock(NarrationAi.class);
+        SpeechAi speaker = mock(SpeechAi.class);
+        StudioRenderer renderer = mock(StudioRenderer.class);
+        StudioEpisode episode = new StudioEpisode("Family mystery");
+        EpisodeSpec spec = PilotFixtures.kids();
+        var json = JsonMapper.builder().build();
+        EpisodeNarration narration = new EpisodeNarration("Welcome to our bright puzzle show today.",
+            java.util.stream.IntStream.range(0, spec.puzzles().size()).mapToObj(index -> {
+                String answer = spec.puzzles().get(index).answerId();
+                return new EpisodeNarration.PuzzleNarration(index + 1,
+                    "A cheerful little scene is waiting. One option has a clever surprise. Can you solve this friendly puzzle before the timer starts?",
+                    "Take eight seconds and choose your answer now.",
+                    "OPTION " + answer + " is right. The clear picture clue shows why it fits this playful mystery, while the other choices do not.");
+            }).toList(), "Wonderful thinking. Come back for another puzzle soon.");
+        var grounding = new NarrationGrounding(narration, java.util.stream.IntStream.range(0, spec.puzzles().size())
+            .mapToObj(index -> new NarrationGrounding.Finding(index + 1, false, false, true, "Artwork clue needs your visual judgment."))
+            .toList());
+        episode.specJson = json.writeValueAsString(spec);
+        episode.narrationJson = json.writeValueAsString(narration);
+        episode.narrationGroundingJson = json.writeValueAsString(grounding);
+        when(repository.findById(episode.id)).thenReturn(Optional.of(episode));
+        when(repository.saveAndFlush(any())).thenAnswer(call -> call.getArgument(0));
+
+        StudioService service = new StudioService(repository, puzzles, narrator, speaker, renderer, directory.toString());
+        var view = service.continueWithGroundingWarnings(episode.id);
+
+        assertThat(view.narrationGroundingOverridden()).isTrue();
+        assertThat(view.status()).isEqualTo("ART_REVIEW");
+        verify(renderer).writeNarration(spec, narration, directory.resolve(episode.id.toString()));
+    }
 }
