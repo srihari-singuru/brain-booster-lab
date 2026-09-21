@@ -84,6 +84,16 @@ class StudioAi {
 
     /** Recent local titles make novelty an informed constraint without exporting puzzle details. */
     Draft generate(String brief, int puzzleCount, String requestedModel, String operatorDirection, String recentPuzzleTitles) {
+        return generate(brief, puzzleCount, requestedModel, operatorDirection, recentPuzzleTitles, false);
+    }
+
+    /** A creator-triggered retry after a schema decoding failure uses a smaller response contract. */
+    Draft generateRecovery(String brief, int puzzleCount, String requestedModel, String operatorDirection, String recentPuzzleTitles) {
+        return generate(brief, puzzleCount, requestedModel, operatorDirection, recentPuzzleTitles, true);
+    }
+
+    private Draft generate(String brief, int puzzleCount, String requestedModel, String operatorDirection,
+                           String recentPuzzleTitles, boolean recovery) {
         EpisodeSpec.require(puzzleCount >= 1 && puzzleCount <= 10, "Choose between 1 and 10 puzzles");
         String activeModel = requestedModel == null || requestedModel.isBlank() ? model : requestedModel.trim();
         if (!"live".equals(generationMode)) return new Draft(PilotFixtures.kids(), "local-fixture", "none");
@@ -125,7 +135,7 @@ class StudioAi {
             statement max100 characters describing the subject's appearance for production, NOT a
             spoken alibi or caption. Do NOT reveal the clue in the label. explanation: a warm,
             concrete reveal, max14 words AND85 characters. title max48, episode title max65.
-            sceneDescription: max1600 characters. Specify exactly the chosen three-to-five candidate subjects,
+            sceneDescription: max%s characters. Specify exactly the chosen three-to-five candidate subjects,
             arranged left-to-right in matching OPTION order, with every candidate and the full clue visible.
             State the exact clue and which candidate owns it, plus clear ordinary counterparts. Do not add
             confusing extra candidate-like people or props. NO text or badges in sceneDescription: the application
@@ -139,7 +149,9 @@ class StudioAi {
             neon skin, plastic 3D rendering or visual noise. Do not copy channel characters or designs.
             thinkSeconds: 8–15; use 8 for every visual puzzle.
             Original creative brief follows:
-            """.formatted(puzzleCount) + brief + recentTitleSuffix(recentPuzzleTitles) + operatorSuffix(operatorDirection);
+            """.formatted(puzzleCount, recovery ? "900" : "1600") + brief + recentTitleSuffix(recentPuzzleTitles)
+            + (recovery ? "\nRECOVERY MODE: A prior response could not be decoded. Return the complete schema only. Keep every field concise, especially sceneDescription; do not omit any puzzle or use markdown.\n" : "")
+            + operatorSuffix(operatorDirection);
         var response = client.responses().create(ResponseCreateParams.builder().model(activeModel).input(prompt)
             .store(false).reasoning(Reasoning.builder().effort(ReasoningEffort.HIGH).build())
             .maxOutputTokens(12000).text(EpisodeSpec.class).build());

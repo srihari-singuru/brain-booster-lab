@@ -243,12 +243,16 @@ class StudioService {
     synchronized View generate(UUID id) {
         StudioEpisode e = find(id);
         require(e.specJson == null, "This episode already has a script. Create a revision to change it.");
+        boolean recovery = e.lastError != null && (e.lastError.startsWith("OpenAI returned an incomplete structured response")
+            || e.lastError.contains("OpenAIInvalidDataException"));
         stage(e, "GENERATING");
         try {
             var production = settings(e);
             String direction = stageInstructions(e).forAction("generate");
             String recentPuzzleTitles = recentPuzzleTitles(e.id);
-            var draft = direction.isBlank() && recentPuzzleTitles.isBlank()
+            var draft = recovery
+                ? ai.generateRecovery(e.brief, production.puzzleCount(), production.textModel(), direction, recentPuzzleTitles)
+                : direction.isBlank() && recentPuzzleTitles.isBlank()
                 ? (production.equals(defaults) ? ai.generate(e.brief) : ai.generate(e.brief, production.puzzleCount(), production.textModel()))
                 : ai.generate(e.brief, production.puzzleCount(), production.textModel(), direction, recentPuzzleTitles);
             e.specJson = json.writeValueAsString(draft.spec());
@@ -526,7 +530,9 @@ class StudioService {
     private View failed(StudioEpisode e, Exception exception) {
         e.status = "FAILED";
         // Never persist raw HTTP bodies/headers, which can contain credentials or signed URLs.
-        e.lastError = exception instanceof IllegalArgumentException ? exception.getMessage()
+        e.lastError = "OpenAIInvalidDataException".equals(exception.getClass().getSimpleName())
+            ? "OpenAI returned an incomplete structured response; no puzzle script was saved. Retry manually to send a shorter recovery request."
+            : exception instanceof IllegalArgumentException ? exception.getMessage()
             : "Stage failed (" + exception.getClass().getSimpleName() + "). Check model access, API credits and local services, then retry this stage. Existing assets are retained.";
         save(e); return view(e);
     }

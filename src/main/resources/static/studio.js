@@ -85,8 +85,9 @@ function facts(parent, object) {
   }); parent.append(list);
 }
 function actionFor(e, index) {
+  const retryingGeneration = !e.spec && e.status === 'FAILED';
   const actions = [
-    !e.spec && ['Generate puzzles', 'Generate the puzzle script with your configured text model.', 'generate', false],
+    !e.spec && [retryingGeneration ? 'Retry puzzle generation' : 'Generate puzzles', retryingGeneration ? 'Send a concise recovery request. No prior puzzle content was saved.' : 'Generate the puzzle script with your configured text model.', 'generate', false],
     e.spec && !isReviewed(e) && ['Review puzzles', 'Run the fairness and reasoning check before artwork.', 'review', false],
     isReviewed(e) && !e.artworkReady && ['Generate artwork', 'Create illustrations and visual-quality checks. This uses image credits.', 'artwork', true],
     e.artworkReady && !e.narration && ['Generate narration', 'Write the story-led narration for these exact puzzles.', 'narration', false],
