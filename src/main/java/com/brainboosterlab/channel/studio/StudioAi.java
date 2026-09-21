@@ -24,8 +24,8 @@ class StudioAi {
     public record Finding(int puzzleNumber, String independentlySolvedAnswerId, boolean fair, String notes) {}
     public record Review(List<Finding> findings) {
         boolean passes(EpisodeSpec spec) {
-            if (findings == null || findings.size() != 3) return false;
-            for (int i = 0; i < 3; i++) {
+            if (findings == null || findings.size() != spec.puzzles().size()) return false;
+            for (int i = 0; i < spec.puzzles().size(); i++) {
                 Finding f = findings.get(i);
                 if (f == null || f.puzzleNumber() != i + 1 || !f.fair()
                     || !spec.puzzles().get(i).answerId().equals(f.independentlySolvedAnswerId())) return false;
@@ -55,9 +55,15 @@ class StudioAi {
     }
 
     Draft generate(String brief) {
+        return generate(brief, 3, model);
+    }
+
+    Draft generate(String brief, int puzzleCount, String requestedModel) {
+        EpisodeSpec.require(puzzleCount >= 1 && puzzleCount <= 10, "Choose between 1 and 10 puzzles");
+        String activeModel = requestedModel == null || requestedModel.isBlank() ? model : requestedModel.trim();
         if (!"live".equals(generationMode)) return new Draft(PilotFixtures.kids(), "local-fixture", "none");
         String prompt = """
-            Create three original illustrated mini-mysteries for Brain Booster Lab, ages roughly 6–10
+            Create %d original illustrated mini-mysteries for a family channel, ages roughly 6–10
             watching with family. Set kind="visual" for ALL THREE. Aim for an achievable visual aha:
             one observation, one simple inference, one clear answer among A/B/C. First puzzle is a
             welcoming confidence-builder; later clues slightly less obvious but never tiny or tricky.
@@ -96,26 +102,32 @@ class StudioAi {
             neon skin, plastic 3D rendering or visual noise. Do not copy channel characters or designs.
             thinkSeconds10–15.
             Original creative brief follows:
-            """ + brief;
-        var response = client.responses().create(ResponseCreateParams.builder().model(model).input(prompt)
+            """.formatted(puzzleCount) + brief;
+        var response = client.responses().create(ResponseCreateParams.builder().model(activeModel).input(prompt)
             .store(false).reasoning(Reasoning.builder().effort(ReasoningEffort.HIGH).build())
             .maxOutputTokens(12000).text(EpisodeSpec.class).build());
         EpisodeSpec spec = response.output().stream().flatMap(i -> i.message().stream())
             .flatMap(m -> m.content().stream()).flatMap(c -> c.outputText().stream()).findFirst()
             .orElseThrow(() -> new IllegalStateException("No complete structured episode returned"));
         // Persist the paid structured response before local/independent validation in the service.
-        return new Draft(spec, model, response.id());
+        EpisodeSpec.require(spec.puzzles().size() == puzzleCount, "The script returned the wrong number of puzzles; retry generation");
+        return new Draft(spec, activeModel, response.id());
     }
 
     Review review(EpisodeSpec spec) {
-        if (!"live".equals(generationMode)) return new Review(java.util.stream.IntStream.range(0,3)
+        return review(spec, model);
+    }
+
+    Review review(EpisodeSpec spec, String requestedModel) {
+        String activeModel = requestedModel == null || requestedModel.isBlank() ? model : requestedModel.trim();
+        if (!"live".equals(generationMode)) return new Review(java.util.stream.IntStream.range(0,spec.puzzles().size())
             .mapToObj(i -> new Finding(i+1,spec.puzzles().get(i).answerId(),true,
                 "Offline fixture only; NOT an independent AI review.")).toList());
         // Do not give the critic the proposed answers or explanations: solve independently first.
         var questions = spec.puzzles().stream().map(p -> java.util.Map.of(
             "setup", p.setup(), "question", p.question(), "facts", p.facts(), "choices", p.choices(),
             "scenePlan", "visual".equals(p.kind()) ? p.sceneDescription() : "Not applicable")).toList();
-        String prompt = "Independently solve these three reasoning puzzles in order. For each return puzzleNumber 1–3, "
+        String prompt = "Independently solve these " + spec.puzzles().size() + " reasoning puzzles in order. For each return puzzleNumber in order starting at 1, "
             + "independentlySolvedAnswerId A/B/C (or NONE if ambiguous), fair boolean, and notes explaining proof "
             + "and why alternatives fail. Reject ambiguity, unstated necessary facts, harmful stereotypes, "
             + "claims that lying proves guilt and tiny object hunts. For visual mini-mysteries, solve from the planned "
@@ -123,7 +135,7 @@ class StudioAi {
             + "reasoning, unsafe stereotypes and unstated supernatural rules. This is only a concept check; an actual-image "
             + "blind visual check follows later. Judge family suitability. "
             + "This is an adversarial review, not a request to endorse. Questions: " + json.writeValueAsString(questions);
-        var response = client.responses().create(ResponseCreateParams.builder().model(model).input(prompt)
+        var response = client.responses().create(ResponseCreateParams.builder().model(activeModel).input(prompt)
             .store(false).reasoning(Reasoning.builder().effort(ReasoningEffort.HIGH).build())
             .maxOutputTokens(10000).text(Review.class).build());
         return response.output().stream().flatMap(i -> i.message().stream()).flatMap(m -> m.content().stream())
@@ -131,6 +143,11 @@ class StudioAi {
     }
 
     void artwork(EpisodeSpec.Puzzle puzzle, Path directory, int index) throws Exception {
+        artwork(puzzle, directory, index, imageModel);
+    }
+
+    void artwork(EpisodeSpec.Puzzle puzzle, Path directory, int index, String requestedImageModel) throws Exception {
+        String activeImageModel = requestedImageModel == null || requestedImageModel.isBlank() ? imageModel : requestedImageModel.trim();
         String prompt = """
             Create one premium 16:9 landscape editorial illustration for an original family reasoning show.
             ART BIBLE v2: sophisticated clean 2D mystery-comic illustration; controlled ink contours with
@@ -174,7 +191,7 @@ class StudioAi {
             g.drawString("OFFLINE LAYOUT TEST — NOT FINAL ARTWORK", 150, 420); g.dispose();
             ImageIO.write(placeholder, "png", artwork.toFile());
         } else {
-            var result = client.images().generate(ImageGenerateParams.builder().model(imageModel)
+            var result = client.images().generate(ImageGenerateParams.builder().model(activeImageModel)
                 .prompt(prompt).size("1536x864").quality(ImageGenerateParams.Quality.HIGH).n(1).build());
             var generated = result.data().flatMap(d -> d.stream().findFirst()).orElseThrow();
             byte[] bytes = Base64.getDecoder().decode(generated.b64Json()
@@ -186,13 +203,18 @@ class StudioAi {
             Files.move(pending, artwork, StandardCopyOption.ATOMIC_MOVE);
         }
         Files.writeString(directory.resolve("provenance-" + index + ".json"), json.writeValueAsString(
-            new Provenance("live".equals(artworkMode) ? imageModel : "offline-placeholder", "1536x864", "high",
+            new Provenance("live".equals(artworkMode) ? activeImageModel : "offline-placeholder", "1536x864", "high",
                 Instant.now(), prompt, !"live".equals(artworkMode))));
     }
 
     VisualReview reviewFrame(Path frame, EpisodeSpec.Puzzle puzzle) throws Exception {
+        return reviewFrame(frame, puzzle, model);
+    }
+
+    VisualReview reviewFrame(Path frame, EpisodeSpec.Puzzle puzzle, String requestedModel) throws Exception {
+        String activeModel = requestedModel == null || requestedModel.isBlank() ? model : requestedModel.trim();
         if (!"live".equals(generationMode)) return new VisualReview(false, "Offline mode: human visual review required.");
-        if ("visual".equals(puzzle.kind())) return reviewVisualMystery(frame, puzzle);
+        if ("visual".equals(puzzle.kind())) return reviewVisualMystery(frame, puzzle, activeModel);
         String prompt = "Review this final question frame for a family reasoning video. Assess readable complete text, "
             + "natural image proportions, coherent anatomy, no obvious graphic defects, no accidental answer reveal, "
             + "and correct left/center/right mapping of any depicted A/B/C subjects. Text must not cover faces. Return acceptable=false "
@@ -204,7 +226,7 @@ class StudioAi {
                 ResponseInputContent.ofInputImage(ResponseInputImage.builder().detail(ResponseInputImage.Detail.HIGH)
                     .imageUrl("data:image/png;base64," + Base64.getEncoder().encodeToString(Files.readAllBytes(frame))).build())))
             .build();
-        var response = client.responses().create(ResponseCreateParams.builder().model(model)
+        var response = client.responses().create(ResponseCreateParams.builder().model(activeModel)
             .inputOfResponse(List.of(ResponseInputItem.ofEasyInputMessage(input))).store(false)
             .maxOutputTokens(6000).text(VisualReview.class).build());
         return response.output().stream().flatMap(i -> i.message().stream()).flatMap(m -> m.content().stream())
@@ -212,7 +234,7 @@ class StudioAi {
     }
 
     public record VisualSolution(String answerId, boolean clearForKids, String observedClue, String issues) {}
-    private VisualReview reviewVisualMystery(Path frame, EpisodeSpec.Puzzle puzzle) throws Exception {
+    private VisualReview reviewVisualMystery(Path frame, EpisodeSpec.Puzzle puzzle, String activeModel) throws Exception {
         // Blind: no intended answer, explanation or scene prompt. The delivered pixels must prove the clue.
         var message = EasyInputMessage.builder().role(EasyInputMessage.Role.USER)
             .contentOfResponseInputMessageContentList(List.of(
@@ -227,7 +249,7 @@ class StudioAi {
                 ResponseInputContent.ofInputImage(ResponseInputImage.builder().detail(ResponseInputImage.Detail.HIGH)
                     .imageUrl("data:image/png;base64," + Base64.getEncoder().encodeToString(Files.readAllBytes(frame))).build())))
             .build();
-        var result = client.responses().create(ResponseCreateParams.builder().model(model)
+        var result = client.responses().create(ResponseCreateParams.builder().model(activeModel)
             .inputOfResponse(List.of(ResponseInputItem.ofEasyInputMessage(message))).store(false)
             .maxOutputTokens(7000).text(VisualSolution.class).build());
         var solution = result.output().stream().flatMap(i -> i.message().stream()).flatMap(m -> m.content().stream())

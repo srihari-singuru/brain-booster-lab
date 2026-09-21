@@ -23,6 +23,19 @@ import org.springframework.stereotype.Component;
 @Component
 class SpeechAi {
     record Draft(EpisodeSpeech speech) {}
+    record Profile(String model, String voice, double speed) {
+        Profile {
+            model = model == null ? "" : model.trim();
+            voice = voice == null ? "" : voice.trim().toLowerCase(Locale.ROOT);
+        }
+        void validate() {
+            EpisodeSpec.require(model.equals("gpt-4o-mini-tts") || model.equals("gpt-4o-mini-tts-2025-12-15"),
+                "Speech model must support expressive TTS instructions");
+            EpisodeSpec.require(VOICES.contains(voice), "Choose a supported built-in OpenAI voice");
+            EpisodeSpec.require(Double.isFinite(speed) && speed >= .75 && speed <= 1.25,
+                "Voice speed must be between 0.75 and 1.25");
+        }
+    }
     private static final Set<String> VOICES = Set.of("alloy", "ash", "ballad", "coral", "echo", "fable",
         "nova", "onyx", "sage", "shimmer", "verse", "marin", "cedar");
     // One rate across every phase prevents perceptible pacing shifts; pitch remains instruction-guided.
@@ -48,37 +61,43 @@ class SpeechAi {
     }
 
     Draft speak(EpisodeSpec spec, EpisodeNarration narration, Path directory) throws Exception {
+        return speak(spec, narration, directory, new Profile(model, voice, STANDARD_SPEECH_SPEED));
+    }
+
+    Draft speak(EpisodeSpec spec, EpisodeNarration narration, Path directory, Profile profile) throws Exception {
         narration.validate(spec);
         EpisodeSpec.require("live".equals(mode),
             "Speech is disabled because SPEECH_MODE resolves to mock. Set SPEECH_MODE=live and provide OPENAI_API_KEY.");
-        EpisodeSpec.require(model.equals("gpt-4o-mini-tts") || model.equals("gpt-4o-mini-tts-2025-12-15"),
-            "OPENAI_TTS_MODEL must be gpt-4o-mini-tts for expressive guided narration");
-        EpisodeSpec.require(VOICES.contains(voice), "OPENAI_TTS_VOICE is not a supported built-in voice");
+        profile.validate();
         Files.createDirectories(directory);
         List<EpisodeSpeech.PuzzleSpeech> tracks = new ArrayList<>();
         for (int i = 0; i < spec.puzzles().size(); i++) {
             EpisodeNarration.PuzzleNarration beat = narration.puzzles().get(i);
-            double question = synthesize(beat.questionLeadIn(), directory.resolve("speech-question-" + i + ".wav"), questionDirection(), STANDARD_SPEECH_SPEED);
-            double timer = synthesize(beat.timerCue(), directory.resolve("speech-timer-" + i + ".wav"), timerDirection(), STANDARD_SPEECH_SPEED);
-            double reveal = synthesize(beat.revealExplanation(), directory.resolve("speech-reveal-" + i + ".wav"), revealDirection(), STANDARD_SPEECH_SPEED);
+            double question = synthesize(beat.questionLeadIn(), directory.resolve("speech-question-" + i + ".wav"), questionDirection(), profile);
+            double timer = synthesize(beat.timerCue(), directory.resolve("speech-timer-" + i + ".wav"), timerDirection(), profile);
+            double reveal = synthesize(beat.revealExplanation(), directory.resolve("speech-reveal-" + i + ".wav"), revealDirection(), profile);
             tracks.add(new EpisodeSpeech.PuzzleSpeech(i + 1, question, timer, reveal));
         }
-        EpisodeSpeech speech = new EpisodeSpeech(model, voice, tracks);
+        EpisodeSpeech speech = new EpisodeSpeech(profile.model(), profile.voice(), tracks);
         speech.validate(spec);
         return new Draft(speech);
     }
 
     Draft normalizeExisting(EpisodeSpec spec, EpisodeNarration narration, Path directory) throws Exception {
+        return normalizeExisting(spec, narration, directory, new Profile(model, voice, STANDARD_SPEECH_SPEED));
+    }
+
+    Draft normalizeExisting(EpisodeSpec spec, EpisodeNarration narration, Path directory, Profile profile) throws Exception {
         narration.validate(spec);
         List<EpisodeSpeech.PuzzleSpeech> tracks = new ArrayList<>();
         for (int i = 0; i < spec.puzzles().size(); i++) {
             var beat = narration.puzzles().get(i);
-            double question = normalizePace(directory.resolve("speech-question-" + i + ".wav"), beat.questionLeadIn(), directory);
-            double timer = normalizePace(directory.resolve("speech-timer-" + i + ".wav"), beat.timerCue(), directory);
-            double reveal = normalizePace(directory.resolve("speech-reveal-" + i + ".wav"), beat.revealExplanation(), directory);
+            double question = normalizePace(directory.resolve("speech-question-" + i + ".wav"), beat.questionLeadIn(), directory, profile.speed());
+            double timer = normalizePace(directory.resolve("speech-timer-" + i + ".wav"), beat.timerCue(), directory, profile.speed());
+            double reveal = normalizePace(directory.resolve("speech-reveal-" + i + ".wav"), beat.revealExplanation(), directory, profile.speed());
             tracks.add(new EpisodeSpeech.PuzzleSpeech(i + 1, question, timer, reveal));
         }
-        EpisodeSpeech speech = new EpisodeSpeech(model, voice, tracks);
+        EpisodeSpeech speech = new EpisodeSpeech(profile.model(), profile.voice(), tracks);
         speech.validate(spec);
         return new Draft(speech);
     }
@@ -98,24 +117,24 @@ class SpeechAi {
         return new Draft(speech);
     }
 
-    private double synthesize(String input, Path target, String instructions, double speed) throws Exception {
+    private double synthesize(String input, Path target, String instructions, Profile profile) throws Exception {
         Path pending = target.resolveSibling(target.getFileName() + ".pending");
         try (HttpResponse response = client.audio().speech().create(SpeechCreateParams.builder()
-                .model(model).voice(voice).input(input).instructions(instructions).speed(speed)
+                .model(profile.model()).voice(profile.voice()).input(input).instructions(instructions).speed(profile.speed())
                 .responseFormat(SpeechCreateParams.ResponseFormat.WAV).build())) {
             Files.copy(response.body(), pending, StandardCopyOption.REPLACE_EXISTING);
         }
-        double seconds = normalizePace(pending, input, target.getParent());
+        double seconds = normalizePace(pending, input, target.getParent(), profile.speed());
         Files.move(pending, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
         return seconds;
     }
 
-    private double normalizePace(Path wav, String spokenText, Path directory) throws Exception {
+    private double normalizePace(Path wav, String spokenText, Path directory, double requestedSpeed) throws Exception {
         if (!Files.isRegularFile(wav)) throw new IllegalStateException("Missing local speech clip " + wav.getFileName());
         long words = WORD.matcher(spokenText).results().count();
         if (words == 0) throw new IllegalStateException("Speech text has no words to pace");
         double original = duration(wav);
-        double targetSeconds = words * 60.0 / TARGET_WORDS_PER_MINUTE;
+        double targetSeconds = words * 60.0 / (TARGET_WORDS_PER_MINUTE * requestedSpeed);
         double tempo = original / targetSeconds;
         if (Math.abs(tempo - 1.0) < .015) return original;
         EpisodeSpec.require(tempo >= .50 && tempo <= 2.0, "Generated speech pace is outside the safe correction range");

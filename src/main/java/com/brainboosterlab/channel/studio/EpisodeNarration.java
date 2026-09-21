@@ -10,11 +10,12 @@ public record EpisodeNarration(String episodeOpening, List<PuzzleNarration> puzz
 
     public void validate(EpisodeSpec spec) {
         line(episodeOpening, 4, 28, "Episode opening");
-        EpisodeSpec.require(puzzles != null && puzzles.size() == 3, "Narration must contain exactly three puzzles");
-        for (int i = 0; i < 3; i++) {
+        EpisodeSpec.require(puzzles != null && puzzles.size() == spec.puzzles().size(),
+            "Narration must contain one beat for every puzzle");
+        for (int i = 0; i < puzzles.size(); i++) {
             PuzzleNarration beat = puzzles.get(i);
             EpisodeSpec.require(beat != null && beat.puzzleNumber() == i + 1,
-                "Narration puzzle numbers must be 1, 2, 3 in order");
+                "Narration puzzle numbers must be consecutive and in order");
             // These word ranges are written for the longer ten-second spoken slots.
             line(beat.questionLeadIn(), 18, 34, "Question lead-in");
             line(beat.timerCue(), 3, 10, "Timer cue");

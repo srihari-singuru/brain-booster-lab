@@ -12,14 +12,16 @@ import jakarta.validation.constraints.Size;
 @RestController
 @RequestMapping("/api/v2/episodes")
 class StudioController {
-    record Brief(@NotBlank @Size(max = 4000) String brief) {}
+    record Brief(@NotBlank @Size(max = 4000) String brief, EpisodeSettings settings) {}
     record RestyleOptions(List<SceneOverlay.Region> clueRegions) {}
     private final StudioService studio;
     StudioController(StudioService studio) { this.studio = studio; }
     @GetMapping List<StudioService.View> list() { return studio.list(); }
     @GetMapping("/{id}") StudioService.View get(@PathVariable UUID id) { return studio.get(id); }
     // JSON-only mutations reject cross-site HTML form submissions; no CORS access is granted.
-    @PostMapping(consumes = "application/json") StudioService.View create(@Valid @RequestBody Brief brief) { return studio.create(brief.brief()); }
+    @PostMapping(consumes = "application/json") StudioService.View create(@Valid @RequestBody Brief brief) { return studio.create(brief.brief(), brief.settings()); }
+    @PostMapping(value = "/{id}/settings", consumes = "application/json") StudioService.View settings(@PathVariable UUID id,
+        @RequestBody EpisodeSettings settings) { return studio.settings(id, settings); }
     @PostMapping(value = "/{id}/generate", consumes = "application/json") StudioService.View generate(@PathVariable UUID id) { return studio.generate(id); }
     @PostMapping(value = "/{id}/review", consumes = "application/json") StudioService.View review(@PathVariable UUID id) { return studio.review(id); }
     @PostMapping(value = "/{id}/narration", consumes = "application/json") StudioService.View narration(@PathVariable UUID id) { return studio.narration(id); }

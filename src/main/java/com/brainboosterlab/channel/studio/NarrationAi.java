@@ -46,6 +46,11 @@ class NarrationAi {
     }
 
     Draft write(EpisodeSpec spec) {
+        return write(spec, model);
+    }
+
+    Draft write(EpisodeSpec spec, String requestedModel) {
+        String activeModel = requestedModel == null || requestedModel.isBlank() ? model : requestedModel.trim();
         if (!"live".equals(mode)) return new Draft(fixture(spec), "local-fixture", "none");
         String prompt = """
             You are the senior story writer for Brain Booster Lab, a warm family visual-puzzle channel for ages 6–10.
@@ -73,18 +78,23 @@ class NarrationAi {
 
             Return the required structured object. Episode specification:
             """ + json.writeValueAsString(spec);
-        var response = client.responses().create(ResponseCreateParams.builder().model(model).input(prompt)
+        var response = client.responses().create(ResponseCreateParams.builder().model(activeModel).input(prompt)
             .store(false).reasoning(Reasoning.builder().effort(ReasoningEffort.HIGH).build())
             .maxOutputTokens(7000).text(EpisodeNarration.class).build());
         EpisodeNarration narration = response.output().stream().flatMap(item -> item.message().stream())
             .flatMap(message -> message.content().stream()).flatMap(content -> content.outputText().stream()).findFirst()
             .orElseThrow(() -> new IllegalStateException("No complete structured narration returned"));
         narration.validate(spec);
-        return new Draft(narration, model, response.id());
+        return new Draft(narration, activeModel, response.id());
     }
 
     Review review(EpisodeSpec spec, EpisodeNarration narration) {
-        if (!"live".equals(mode)) return new Review(java.util.stream.IntStream.range(0, 3)
+        return review(spec, narration, model);
+    }
+
+    Review review(EpisodeSpec spec, EpisodeNarration narration, String requestedModel) {
+        String activeModel = requestedModel == null || requestedModel.isBlank() ? model : requestedModel.trim();
+        if (!"live".equals(mode)) return new Review(java.util.stream.IntStream.range(0, spec.puzzles().size())
             .mapToObj(i -> new Finding(i + 1, true, true, true, true,
                 "Offline fixture only; NOT an independent AI narration review.")).toList());
         String prompt = """
@@ -98,7 +108,7 @@ class NarrationAi {
             unsafe claims. Be adversarial: reject generic filler and ambiguous proof. Put concise actionable feedback
             in notes. Do not rubber-stamp.
             Specification: """ + json.writeValueAsString(spec) + "\nNarration: " + json.writeValueAsString(narration);
-        var response = client.responses().create(ResponseCreateParams.builder().model(model).input(prompt)
+        var response = client.responses().create(ResponseCreateParams.builder().model(activeModel).input(prompt)
             .store(false).reasoning(Reasoning.builder().effort(ReasoningEffort.HIGH).build())
             .maxOutputTokens(7000).text(Review.class).build());
         return response.output().stream().flatMap(item -> item.message().stream())
@@ -108,17 +118,22 @@ class NarrationAi {
     record GroundedDraft(NarrationGrounding grounding, String model, String responseId) {}
 
     GroundedDraft ground(EpisodeSpec spec, EpisodeNarration narration, List<Path> frames) throws Exception {
-        EpisodeSpec.require(frames != null && frames.size() == 3, "Grounding needs three completed question frames");
+        return ground(spec, narration, frames, model);
+    }
+
+    GroundedDraft ground(EpisodeSpec spec, EpisodeNarration narration, List<Path> frames, String requestedModel) throws Exception {
+        String activeModel = requestedModel == null || requestedModel.isBlank() ? model : requestedModel.trim();
+        EpisodeSpec.require(frames != null && frames.size() == spec.puzzles().size(), "Grounding needs every completed question frame");
         if (!"live".equals(mode)) {
-            var findings = java.util.stream.IntStream.range(0, 3)
+            var findings = java.util.stream.IntStream.range(0, spec.puzzles().size())
                 .mapToObj(i -> new NarrationGrounding.Finding(i + 1, false, false, true,
                     "Offline fixture only; human visual narration review is required."))
                 .toList();
             return new GroundedDraft(new NarrationGrounding(narration, findings), "local-fixture", "none");
         }
         String prompt = """
-            You are Brain Booster Lab’s final visual-continuity editor. The three attached images are completed
-            QUESTION frames in puzzle order one, two, three. Compare pixels in each frame against its puzzle
+            You are a final visual-continuity editor. The attached images are completed QUESTION frames in puzzle
+            order. Compare pixels in each frame against its puzzle
             specification and its proposed narration. Do not trust the written scene plan when it contradicts a frame.
 
             For every puzzle, verify that the correct option and decisive clue are truly visible, readable, and
@@ -129,20 +144,15 @@ class NarrationAi {
 
             If any image does not prove its clue, set that finding’s visualClueConfirmed and narrationMatchesFrame
             false, explain the mismatch, and keep the narration conservative. Each notes field must be one or two short sentences, under 300 characters. Return the complete structured
-            NarrationGrounding object with exactly three findings in image order.
+            NarrationGrounding object with one finding per image in order.
 
             Puzzle specification: """ + json.writeValueAsString(spec) + "\nProposed narration: " + json.writeValueAsString(narration);
-        var message = EasyInputMessage.builder().role(EasyInputMessage.Role.USER)
-            .contentOfResponseInputMessageContentList(List.of(
-                ResponseInputContent.ofInputText(ResponseInputText.builder().text(prompt).build()),
-                ResponseInputContent.ofInputImage(ResponseInputImage.builder().detail(ResponseInputImage.Detail.HIGH)
-                    .imageUrl("data:image/png;base64," + Base64.getEncoder().encodeToString(Files.readAllBytes(frames.get(0)))).build()),
-                ResponseInputContent.ofInputImage(ResponseInputImage.builder().detail(ResponseInputImage.Detail.HIGH)
-                    .imageUrl("data:image/png;base64," + Base64.getEncoder().encodeToString(Files.readAllBytes(frames.get(1)))).build()),
-                ResponseInputContent.ofInputImage(ResponseInputImage.builder().detail(ResponseInputImage.Detail.HIGH)
-                    .imageUrl("data:image/png;base64," + Base64.getEncoder().encodeToString(Files.readAllBytes(frames.get(2)))).build())))
-            .build();
-        var response = client.responses().create(ResponseCreateParams.builder().model(model)
+        var content = new java.util.ArrayList<ResponseInputContent>();
+        content.add(ResponseInputContent.ofInputText(ResponseInputText.builder().text(prompt).build()));
+        for (Path frame : frames) content.add(ResponseInputContent.ofInputImage(ResponseInputImage.builder()
+            .detail(ResponseInputImage.Detail.HIGH).imageUrl("data:image/png;base64," + Base64.getEncoder().encodeToString(Files.readAllBytes(frame))).build()));
+        var message = EasyInputMessage.builder().role(EasyInputMessage.Role.USER).contentOfResponseInputMessageContentList(content).build();
+        var response = client.responses().create(ResponseCreateParams.builder().model(activeModel)
             .inputOfResponse(List.of(ResponseInputItem.ofEasyInputMessage(message))).store(false)
             .reasoning(Reasoning.builder().effort(ReasoningEffort.HIGH).build())
             .maxOutputTokens(10000).text(NarrationGrounding.class).build());
@@ -150,11 +160,11 @@ class NarrationAi {
             .flatMap(item -> item.content().stream()).flatMap(item -> item.outputText().stream()).findFirst()
             .orElseThrow(() -> new IllegalStateException("No complete structured narration grounding returned")), spec.puzzles().size());
         grounded.validate(spec);
-        return new GroundedDraft(grounded, model, response.id());
+        return new GroundedDraft(grounded, activeModel, response.id());
     }
 
     private static EpisodeNarration fixture(EpisodeSpec spec) {
-        var beats = java.util.stream.IntStream.range(0, 3).mapToObj(index -> {
+        var beats = java.util.stream.IntStream.range(0, spec.puzzles().size()).mapToObj(index -> {
             var puzzle = spec.puzzles().get(index);
             return new EpisodeNarration.PuzzleNarration(index + 1,
                 "A bright little scene is unfolding, with three lively choices and one clever surprise waiting in the picture. Which option solves this friendly puzzle today?",

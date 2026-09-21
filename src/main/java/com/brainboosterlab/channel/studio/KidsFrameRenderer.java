@@ -39,6 +39,11 @@ final class KidsFrameRenderer {
 
     static BufferedImage frame(EpisodeSpec.Puzzle p, BufferedImage art, int index, String phase, int countdown, boolean draft,
                                SceneOverlay overlay, double revealTime) {
+        return frame(p, art, index, phase, countdown, draft, overlay, revealTime, "BRAIN BOOSTER LAB", 3);
+    }
+
+    static BufferedImage frame(EpisodeSpec.Puzzle p, BufferedImage art, int index, String phase, int countdown, boolean draft,
+                               SceneOverlay overlay, double revealTime, String channelName, int puzzleCount) {
         var canvas = new BufferedImage(WIDTH, HEIGHT, BufferedImage.TYPE_INT_RGB);
         var g = canvas.createGraphics();
         try {
@@ -95,12 +100,13 @@ final class KidsFrameRenderer {
                 g.drawArc(timer.x - 7, timer.y - 7, 106, 106, 90,
                     -(int)(360.0 * countdown / VISUAL_QUESTION_SECONDS));
             }
-            for (int dot = 0; dot < 3; dot++) {
-                g.setColor(OUTLINE); g.fillOval(1648 + dot * 30, 122, 20, 20);
-                g.setColor(dot == index ? YELLOW : Color.WHITE); g.fillOval(1652 + dot * 30, 126, 12, 12);
+            int dots = Math.min(puzzleCount, 8), dotStart = 1748 - dots * 25;
+            for (int dot = 0; dot < dots; dot++) {
+                g.setColor(OUTLINE); g.fillOval(dotStart + dot * 25, 122, 18, 18);
+                g.setColor(dot == index ? YELLOW : Color.WHITE); g.fillOval(dotStart + 4 + dot * 25, 126, 10, 10);
             }
-            drawSideBrand(g, 66, 500, true);
-            drawSideBrand(g, 1854, 500, false);
+            drawSideBrand(g, 66, 500, true, channelName);
+            drawSideBrand(g, 1854, 500, false, channelName);
             drawPlayBadge(g, 31, 696);
             drawPlayBadge(g, 1819, 696);
             if (draft) headline(g, "DRAFT", new Rectangle(30, 1020, 100, 28), 22, 18, Color.WHITE, 3);
@@ -162,11 +168,11 @@ final class KidsFrameRenderer {
         centered(g, Integer.toString(number), new Rectangle(cx - 42, cy - 42, 84, 84), 66, OUTLINE);
     }
 
-    private static void drawSideBrand(Graphics2D g, int x, int centerY, boolean left) {
+    private static void drawSideBrand(Graphics2D g, int x, int centerY, boolean left, String channelName) {
         AffineTransform transform = g.getTransform();
         try {
             g.rotate(left ? -Math.PI / 2 : Math.PI / 2, x, centerY);
-            String name = "BRAIN BOOSTER LAB";
+            String name = channelName.toUpperCase(Locale.ROOT);
             g.setFont(new Font(DISPLAY_FONT, Font.BOLD, 30));
             int width = g.getFontMetrics().stringWidth(name);
             int baseline = centerY + (g.getFontMetrics().getAscent() - g.getFontMetrics().getDescent()) / 2;

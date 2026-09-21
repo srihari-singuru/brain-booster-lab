@@ -7,6 +7,7 @@ import java.util.*;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -18,7 +19,7 @@ class StudioService {
     record View(UUID id, String brief, String status, EpisodeSpec spec, StudioAi.Review review,
                 EpisodeNarration narration, NarrationAi.Review narrationReview, NarrationGrounding narrationGrounding, EpisodeSpeech speech,
                 String lastError, String scriptModel, String responseId, String narrationModel, String narrationResponseId,
-                String narrationGroundingModel, String speechModel, String speechVoice, Instant approvedAt, boolean artworkReady,
+                String narrationGroundingModel, String speechModel, String speechVoice, EpisodeSettings settings, Instant approvedAt, boolean artworkReady,
                 List<StudioAi.VisualReview> visualReviews, boolean previewReady, boolean finalReady, boolean speechReady) {}
     private final StudioRepository repository;
     private final StudioAi ai;
@@ -26,11 +27,27 @@ class StudioService {
     private final SpeechAi speaker;
     private final StudioRenderer renderer;
     private final Path root;
+    private final EpisodeSettings defaults;
     private final JsonMapper json = JsonMapper.builder().build();
+    @Autowired
     StudioService(StudioRepository repository, StudioAi ai, NarrationAi narrator, SpeechAi speaker, StudioRenderer renderer,
-                  @Value("${brain-booster.studio.output-dir:outputs/studio}") String output) {
+                  @Value("${brain-booster.studio.output-dir:outputs/studio}") String output,
+                  @Value("${brain-booster.generation.model:}") String textModel,
+                  @Value("${brain-booster.artwork.model:}") String imageModel,
+                  @Value("${brain-booster.narration.model:}") String narrationModel,
+                  @Value("${brain-booster.speech.model:gpt-4o-mini-tts}") String speechModel,
+                  @Value("${brain-booster.speech.voice:cedar}") String speechVoice) {
         this.repository = repository; this.ai = ai; this.narrator = narrator; this.speaker = speaker; this.renderer = renderer;
         this.root = Path.of(output).toAbsolutePath().normalize();
+        String text = fallback(textModel, "gpt-4o-mini");
+        this.defaults = new EpisodeSettings("BRAIN BOOSTER LAB", 3, text, fallback(imageModel, "gpt-image-1"),
+            fallback(narrationModel, text), fallback(speechModel, "gpt-4o-mini-tts"), fallback(speechVoice, "cedar"), 1.00);
+    }
+
+    /** Keeps focused unit tests and local tooling independent of Spring property wiring. */
+    StudioService(StudioRepository repository, StudioAi ai, NarrationAi narrator, SpeechAi speaker, StudioRenderer renderer, String output) {
+        this(repository, ai, narrator, speaker, renderer, output, "gpt-4o-mini", "gpt-image-1", "gpt-4o-mini",
+            "gpt-4o-mini-tts", "cedar");
     }
 
     @EventListener(ApplicationReadyEvent.class)
@@ -44,17 +61,37 @@ class StudioService {
         }
     }
 
-    synchronized View create(String brief) {
+    synchronized View create(String brief) { return create(brief, defaults); }
+    synchronized View create(String brief, EpisodeSettings requestedSettings) {
         EpisodeSpec.require(brief != null && !brief.isBlank() && brief.length() <= 4000, "Brief must be 1–4000 characters");
-        return view(repository.saveAndFlush(new StudioEpisode(brief.trim())));
+        EpisodeSettings settings = requestedSettings == null ? defaults : requestedSettings;
+        settings.validate();
+        var episode = new StudioEpisode(brief.trim());
+        episode.settingsJson = json.writeValueAsString(settings);
+        return view(repository.saveAndFlush(episode));
     }
     List<View> list() { return repository.findAllByOrderByCreatedAtDesc().stream().map(this::view).toList(); }
     View get(UUID id) { return view(find(id)); }
+
+    synchronized View settings(UUID id, EpisodeSettings requestedSettings) {
+        requestedSettings.validate();
+        var episode = find(id);
+        require(episode.approvedAt == null, "Approved episodes are immutable; create a revision to change their settings");
+        if (episode.specJson != null) require(spec(episode).puzzles().size() == requestedSettings.puzzleCount(),
+            "Puzzle count belongs to the script. Create a new episode to change it after script generation.");
+        episode.settingsJson = json.writeValueAsString(requestedSettings);
+        save(episode);
+        return view(episode);
+    }
 
     synchronized View revise(UUID id, EpisodeSpec replacement) {
         replacement.validate();
         var source = find(id);
         var revision = new StudioEpisode("Revision of " + id + ": " + source.brief);
+        var sourceSettings = settings(source);
+        revision.settingsJson = json.writeValueAsString(new EpisodeSettings(sourceSettings.channelName(), replacement.puzzles().size(),
+            sourceSettings.textModel(), sourceSettings.imageModel(), sourceSettings.narrationModel(), sourceSettings.speechModel(),
+            sourceSettings.speechVoice(), sourceSettings.speechSpeed()));
         revision.specJson = json.writeValueAsString(replacement);
         revision.scriptModel = "editor-revision (source: " + source.scriptModel + ")";
         revision.status = "SCRIPT_REVIEW";
@@ -62,7 +99,7 @@ class StudioService {
         if (source.specJson != null) {
             var original = json.readValue(source.specJson, EpisodeSpec.class);
             try {
-                for (int i = 0; i < 3; i++) {
+                for (int i = 0; i < replacement.puzzles().size(); i++) {
                     if (!original.puzzles().get(i).equals(replacement.puzzles().get(i))) continue;
                     Path sourceDir = directory(id), targetDir = directory(revision.id);
                     if (!Files.isRegularFile(sourceDir.resolve("art-" + i + ".png"))) continue;
@@ -92,11 +129,11 @@ class StudioService {
         var source = find(id);
         var original = spec(source);
         if (clues != null) {
-            EpisodeSpec.require(clues.size() == 3 && clues.stream().allMatch(Objects::nonNull), "Provide exactly three clue regions");
+            EpisodeSpec.require(clues.size() == original.puzzles().size() && clues.stream().allMatch(Objects::nonNull), "Provide one clue region for every puzzle");
             clues.forEach(SceneOverlay.Region::validate);
         }
-        for (int i = 0; i < 3; i++) require(Files.isRegularFile(directory(id).resolve("art-" + i + ".png")),
-            "Restyling needs all three saved artworks; prepare missing artwork first");
+        for (int i = 0; i < original.puzzles().size(); i++) require(Files.isRegularFile(directory(id).resolve("art-" + i + ".png")),
+            "Restyling needs all three saved artworks for a three-puzzle episode, or every artwork in a larger episode; prepare missing artwork first");
         var revision = find(revise(id, original).id());
         // Concept review is valid only because the entire specification is unchanged.
         revision.reviewJson = source.reviewJson;
@@ -108,13 +145,18 @@ class StudioService {
         revision.narrationResponseId = source.narrationResponseId;
         stage(revision, "PREPARING_ART");
         try {
-            if (clues != null) for (int i = 0; i < 3; i++) {
+            if (clues != null) for (int i = 0; i < original.puzzles().size(); i++) {
                 var overlay = new SceneOverlay(SceneOverlay.hash(directory(revision.id).resolve("art-" + i + ".png")),
                     original.puzzles().get(i).answerId(), clues.get(i));
                 Files.writeString(directory(revision.id).resolve("overlay-" + i + ".json"), json.writeValueAsString(overlay));
             }
-            renderer.previews(original, directory(revision.id));
-            if (revision.narrationJson != null) renderer.writeNarration(original, narration(revision, original), directory(revision.id));
+            var production = settings(revision);
+            if (production.equals(defaults)) renderer.previews(original, directory(revision.id));
+            else renderer.previews(original, directory(revision.id), production.channelName());
+            if (revision.narrationJson != null) {
+                if (production.equals(defaults)) renderer.writeNarration(original, narration(revision, original), directory(revision.id));
+                else renderer.writeNarration(original, narration(revision, original), directory(revision.id), production.channelName());
+            }
             stage(revision, "ART_REVIEW");
             return view(revision);
         } catch (Exception ex) { return failed(revision, ex); }
@@ -126,7 +168,8 @@ class StudioService {
         require(e.specJson == null, "This episode already has a script. Create a revision to change it.");
         stage(e, "GENERATING");
         try {
-            var draft = ai.generate(e.brief);
+            var production = settings(e);
+            var draft = production.equals(defaults) ? ai.generate(e.brief) : ai.generate(e.brief, production.puzzleCount(), production.textModel());
             e.specJson = json.writeValueAsString(draft.spec());
             e.scriptModel = draft.model(); e.responseId = draft.responseId();
             stage(e, "SCRIPT_REVIEW"); // Preserve the paid script even if the independent review fails.
@@ -141,7 +184,8 @@ class StudioService {
         var spec = spec(e);
         stage(e, "REVIEWING");
         try {
-            var review = ai.review(spec);
+            var production = settings(e);
+            var review = production.equals(defaults) ? ai.review(spec) : ai.review(spec, production.textModel());
             e.reviewJson = json.writeValueAsString(review);
             stage(e, review.passes(spec) ? "SCRIPT_REVIEW" : "CHANGES_NEEDED");
             return view(e);
@@ -155,15 +199,17 @@ class StudioService {
         require(reviewPasses(e, spec), "Independent reasoning review must pass before narration");
         stage(e, "NARRATING");
         try {
-            var draft = narrator.write(spec);
+            var production = settings(e);
+            var draft = production.equals(defaults) ? narrator.write(spec) : narrator.write(spec, production.narrationModel());
             draft.narration().validate(spec);
             e.narrationJson = json.writeValueAsString(draft.narration());
             e.narrationModel = draft.model(); e.narrationResponseId = draft.responseId();
             e.narrationGroundingJson = null; e.narrationGroundingModel = null; e.narrationGroundingResponseId = null;
             e.speechJson = null; e.speechModel = null; e.speechVoice = null;
-            var review = narrator.review(spec, draft.narration());
+            var review = production.equals(defaults) ? narrator.review(spec, draft.narration()) : narrator.review(spec, draft.narration(), production.narrationModel());
             e.narrationReviewJson = json.writeValueAsString(review);
-            renderer.writeNarration(spec, draft.narration(), directory(id));
+            if (production.equals(defaults)) renderer.writeNarration(spec, draft.narration(), directory(id));
+            else renderer.writeNarration(spec, draft.narration(), directory(id), production.channelName());
             stage(e, review.passes(spec) ? "NARRATION_REVIEW" : "CHANGES_NEEDED");
             return view(e);
         } catch (Exception ex) { return failed(e, ex); }
@@ -175,19 +221,21 @@ class StudioService {
         var spec = spec(e);
         var narration = narration(e, spec);
         Path dir = directory(id);
-        List<Path> frames = java.util.stream.IntStream.range(0, 3)
+        List<Path> frames = java.util.stream.IntStream.range(0, spec.puzzles().size())
             .mapToObj(i -> dir.resolve("question-" + i + ".png")).toList();
         require(frames.stream().allMatch(Files::isRegularFile), "Prepare completed question frames before grounding narration");
         stage(e, "NARRATION_GROUNDING");
         try {
-            var draft = narrator.ground(spec, narration, frames);
+            var production = settings(e);
+            var draft = production.equals(defaults) ? narrator.ground(spec, narration, frames) : narrator.ground(spec, narration, frames, production.narrationModel());
             draft.grounding().validate(spec);
             e.narrationGroundingJson = json.writeValueAsString(draft.grounding());
             e.narrationGroundingModel = draft.model(); e.narrationGroundingResponseId = draft.responseId();
             if (draft.grounding().passes(spec)) {
                 e.narrationJson = json.writeValueAsString(draft.grounding().narration());
                 e.speechJson = null; e.speechModel = null; e.speechVoice = null;
-                renderer.writeNarration(spec, draft.grounding().narration(), dir);
+                if (production.equals(defaults)) renderer.writeNarration(spec, draft.grounding().narration(), dir);
+                else renderer.writeNarration(spec, draft.grounding().narration(), dir, production.channelName());
                 stage(e, "ART_REVIEW");
             } else stage(e, "CHANGES_NEEDED");
             return view(e);
@@ -202,14 +250,19 @@ class StudioService {
         stage(e, "PREPARING_ART");
         try {
             Path dir = directory(id); Files.createDirectories(dir);
-            for (int i = 0; i < 3; i++) ai.artwork(spec.puzzles().get(i), dir, i);
-            renderer.previews(spec, dir);
-            for (int i = 0; i < 3; i++) {
+            var production = settings(e);
+            for (int i = 0; i < spec.puzzles().size(); i++) {
+                if (production.equals(defaults)) ai.artwork(spec.puzzles().get(i), dir, i);
+                else ai.artwork(spec.puzzles().get(i), dir, i, production.imageModel());
+            }
+            renderer.previews(spec, dir, production.channelName());
+            for (int i = 0; i < spec.puzzles().size(); i++) {
                 Path report = dir.resolve("visual-review-" + i + ".json");
                 String hash = digest(dir.resolve("question-" + i + ".png"));
                 Path cached = dir.resolve("visual-check-" + i + "-" + hash + ".json");
                 if (!Files.exists(cached)) Files.writeString(cached, json.writeValueAsString(
-                    ai.reviewFrame(dir.resolve("question-" + i + ".png"), spec.puzzles().get(i))));
+                    production.equals(defaults) ? ai.reviewFrame(dir.resolve("question-" + i + ".png"), spec.puzzles().get(i))
+                        : ai.reviewFrame(dir.resolve("question-" + i + ".png"), spec.puzzles().get(i), production.textModel())));
                 Files.writeString(report, Files.readString(cached));
                 Files.writeString(dir.resolve("visual-review-" + i + ".sha256"), hash);
             }
@@ -230,7 +283,9 @@ class StudioService {
         boolean recoverExisting = "FAILED".equals(e.status) && existingSpeechClips(id);
         stage(e, "SPEAKING");
         try {
-            var draft = recoverExisting ? speaker.recoverExisting(spec, directory(id)) : speaker.speak(spec, narration, directory(id));
+            var production = settings(e);
+            var profile = new SpeechAi.Profile(production.speechModel(), production.speechVoice(), production.speechSpeed());
+            var draft = recoverExisting ? speaker.recoverExisting(spec, directory(id)) : speaker.speak(spec, narration, directory(id), profile);
             draft.speech().validate(spec);
             renderer.writeSpeechTrack(spec, draft.speech(), directory(id));
             e.speechJson = json.writeValueAsString(draft.speech());
@@ -246,8 +301,8 @@ class StudioService {
         var spec = spec(e);
         require(reviewPasses(e, spec), "The reasoning review must pass");
         var view = view(e);
-        require(view.artworkReady(), "Prepare all three artworks before approval");
-        require(view.visualReviews().size() == 3 && view.visualReviews().stream().allMatch(StudioAi.VisualReview::acceptable),
+        require(view.artworkReady(), "Prepare all artwork before approval");
+        require(view.visualReviews().size() == spec.puzzles().size() && view.visualReviews().stream().allMatch(StudioAi.VisualReview::acceptable),
             "Resolve the visual review findings before approval");
         if (e.narrationJson != null) require(view.speechReady(),
             "Generate and listen to the AI voice before approving this narrated episode");
@@ -268,14 +323,16 @@ class StudioService {
             // Sound effects and pacing are deterministic local production work. Rebuild from saved clips
             // so a preview reflects renderer updates without making another Speech API request.
             if (speech != null && e.narrationJson != null) {
-                var paced = speaker.normalizeExisting(spec, narration(e, spec), directory(id));
+                var production = settings(e);
+                var paced = speaker.normalizeExisting(spec, narration(e, spec), directory(id),
+                    new SpeechAi.Profile(production.speechModel(), production.speechVoice(), production.speechSpeed()));
                 speech = paced.speech();
                 e.speechJson = json.writeValueAsString(speech);
                 e.speechModel = speech.model(); e.speechVoice = speech.voice();
                 save(e);
                 renderer.writeSpeechTrack(spec, speech, directory(id));
             }
-            renderer.render(spec, directory(id), draft, speech);
+            renderer.render(spec, directory(id), draft, speech, settings(e).channelName());
             stage(e, draft ? (e.approvedAt == null ? "ART_REVIEW" : "APPROVED") : "RENDERED");
             return view(e);
         } catch (Exception ex) { return failed(e, ex); }
@@ -283,7 +340,7 @@ class StudioService {
 
     Path media(UUID id, String filename) {
         find(id);
-        require(filename.matches("(?:art|question|reveal)-[0-2]\\.png|(?:provenance|visual-review)-[0-2]\\.json|(?:preview|final)\\.mp4|narration\\.txt|speech\\.m4a|ai-voice-disclosure\\.txt"),
+        require(filename.matches("(?:art|question|reveal)-[0-9]+\\.png|(?:provenance|visual-review)-[0-9]+\\.json|(?:preview|final)\\.mp4|narration\\.txt|speech\\.m4a|ai-voice-disclosure\\.txt"),
             "Unknown media asset");
         Path path = directory(id).resolve(filename);
         if (!Files.isRegularFile(path)) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Asset is not ready");
@@ -296,6 +353,16 @@ class StudioService {
     private EpisodeSpec spec(StudioEpisode e) {
         require(e.specJson != null, "Generate the script first");
         var spec = json.readValue(e.specJson, EpisodeSpec.class); spec.validate(); return spec;
+    }
+    private EpisodeSettings settings(StudioEpisode e) {
+        if (e.settingsJson == null || e.settingsJson.isBlank()) {
+            int count = e.specJson == null ? defaults.puzzleCount() : spec(e).puzzles().size();
+            return new EpisodeSettings(defaults.channelName(), count, defaults.textModel(), defaults.imageModel(),
+                defaults.narrationModel(), defaults.speechModel(), defaults.speechVoice(), defaults.speechSpeed());
+        }
+        var settings = json.readValue(e.settingsJson, EpisodeSettings.class);
+        settings.validate();
+        return settings;
     }
     private boolean reviewPasses(StudioEpisode e, EpisodeSpec spec) {
         return e.reviewJson != null && json.readValue(e.reviewJson, StudioAi.Review.class).passes(spec);
@@ -318,7 +385,7 @@ class StudioService {
     }
     private boolean existingSpeechClips(UUID id) {
         Path dir = directory(id);
-        return java.util.stream.IntStream.range(0, 3).allMatch(i -> Files.isRegularFile(dir.resolve("speech-question-" + i + ".wav"))
+        return java.util.stream.IntStream.range(0, spec(find(id)).puzzles().size()).allMatch(i -> Files.isRegularFile(dir.resolve("speech-question-" + i + ".wav"))
             && Files.isRegularFile(dir.resolve("speech-timer-" + i + ".wav")) && Files.isRegularFile(dir.resolve("speech-reveal-" + i + ".wav")));
     }
     private boolean speechReady(StudioEpisode e, EpisodeSpec spec) {
@@ -340,7 +407,8 @@ class StudioService {
         try { ready = StudioRenderer.layoutVersion(spec(e)).equals(Files.readString(dir.resolve("layout-version.txt"))); }
         catch (Exception ex) { ready = false; }
         var reviews = new ArrayList<StudioAi.VisualReview>();
-        for (int i = 0; i < 3; i++) {
+        int puzzleCount = e.specJson == null ? settings(e).puzzleCount() : spec(e).puzzles().size();
+        for (int i = 0; i < puzzleCount; i++) {
             ready &= Files.isRegularFile(dir.resolve("question-" + i + ".png")) && Files.isRegularFile(dir.resolve("art-" + i + ".png"));
             Path report = dir.resolve("visual-review-" + i + ".json");
             if (Files.isRegularFile(report)) {
@@ -362,11 +430,14 @@ class StudioService {
             e.narrationJson == null ? null : json.readValue(e.narrationJson, EpisodeNarration.class),
             e.narrationReviewJson == null ? null : json.readValue(e.narrationReviewJson, NarrationAi.Review.class),
             e.narrationGroundingJson == null ? null : json.readValue(e.narrationGroundingJson, NarrationGrounding.class), speech, e.lastError,
-            e.scriptModel, e.responseId, e.narrationModel, e.narrationResponseId, e.narrationGroundingModel, e.speechModel, e.speechVoice,
+            e.scriptModel, e.responseId, e.narrationModel, e.narrationResponseId, e.narrationGroundingModel, e.speechModel, e.speechVoice, settings(e),
             e.approvedAt, ready, reviews, Files.isRegularFile(dir.resolve("preview.mp4")), Files.isRegularFile(dir.resolve("final.mp4")), speechReady);
     }
     private static void require(boolean condition, String message) {
         if (!condition) throw new ResponseStatusException(HttpStatus.CONFLICT, message);
+    }
+    private static String fallback(String value, String defaultValue) {
+        return value == null || value.isBlank() ? defaultValue : value.trim();
     }
     private static String digest(Path file) throws Exception {
         return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(file)));

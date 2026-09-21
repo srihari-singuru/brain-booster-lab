@@ -11,13 +11,14 @@ public record EpisodeSpec(String title, List<Puzzle> puzzles) {
                          String explanation, String sceneDescription, int thinkSeconds) {}
     public void validate() {
         text(title, 65, "Episode title");
-        require(puzzles != null && puzzles.size() == 3, "The pilot must contain three puzzles");
+        require(puzzles != null && puzzles.size() >= 1 && puzzles.size() <= 10,
+            "An episode must contain between 1 and 10 puzzles");
         var kinds = new HashSet<String>();
         for (Puzzle p : puzzles) {
             require(p != null, "Puzzle is missing");
             boolean visual = "visual".equals(p.kind());
             require(List.of("deduction", "logic", "sequence", "visual").contains(p.kind()), "Unsupported puzzle kind");
-            require(visual || kinds.add(p.kind()), "Use three distinct puzzle kinds");
+            require(visual || kinds.add(p.kind()), "Use distinct non-visual puzzle kinds");
             text(p.title(), 48, "Puzzle title");
             text(p.setup(), 155, "Setup");
             text(p.question(), visual ? 60 : 90, "Question");

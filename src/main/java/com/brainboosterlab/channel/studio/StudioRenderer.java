@@ -27,26 +27,28 @@ class StudioRenderer {
     private final String ffmpeg;
     StudioRenderer(@Value("${brain-booster.render.ffmpeg-path:ffmpeg}") String ffmpeg) { this.ffmpeg = ffmpeg; }
 
-    void previews(EpisodeSpec spec, Path dir) throws Exception {
-        for (int i = 0; i < 3; i++) {
+    void previews(EpisodeSpec spec, Path dir) throws Exception { previews(spec, dir, "BRAIN BOOSTER LAB"); }
+    void previews(EpisodeSpec spec, Path dir, String channelName) throws Exception {
+        for (int i = 0; i < spec.puzzles().size(); i++) {
             BufferedImage art = readArt(dir, i);
             var puzzle = spec.puzzles().get(i);
             var overlay = SceneOverlay.read(dir, i, puzzle);
-            ImageIO.write(composed(puzzle, art, i, "question", 0, false, overlay, 1.2), "png", dir.resolve("question-" + i + ".png").toFile());
-            ImageIO.write(composed(puzzle, art, i, "reveal", 0, false, overlay, 1.2), "png", dir.resolve("reveal-" + i + ".png").toFile());
+            ImageIO.write(composed(puzzle, art, i, "question", 0, false, overlay, 1.2, channelName, spec.puzzles().size()), "png", dir.resolve("question-" + i + ".png").toFile());
+            ImageIO.write(composed(puzzle, art, i, "reveal", 0, false, overlay, 1.2, channelName, spec.puzzles().size()), "png", dir.resolve("reveal-" + i + ".png").toFile());
         }
         Files.writeString(dir.resolve("layout-version.txt"), layoutVersion(spec));
         // A reviewed writer draft is never replaced by a generic rendering fallback.
-        if (!Files.exists(dir.resolve("narration.txt"))) writeNarration(spec, fallbackNarration(spec), dir);
+        if (!Files.exists(dir.resolve("narration.txt"))) writeNarration(spec, fallbackNarration(spec), dir, channelName);
     }
 
-    void writeNarration(EpisodeSpec spec, EpisodeNarration narration, Path dir) throws Exception {
+    void writeNarration(EpisodeSpec spec, EpisodeNarration narration, Path dir) throws Exception { writeNarration(spec, narration, dir, "BRAIN BOOSTER LAB"); }
+    void writeNarration(EpisodeSpec spec, EpisodeNarration narration, Path dir, String channelName) throws Exception {
         narration.validate(spec);
         Files.createDirectories(dir);
-        StringBuilder script = new StringBuilder("BRAIN BOOSTER LAB — NARRATION SCRIPT\n")
+        StringBuilder script = new StringBuilder(channelName.toUpperCase(java.util.Locale.ROOT) + " — NARRATION SCRIPT\n")
             .append("Speech production is deferred. Review this copy before enabling text-to-speech.\n\n")
             .append("EPISODE OPENING — FUTURE INTRO\n").append(narration.episodeOpening()).append("\n\n");
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < spec.puzzles().size(); i++) {
             var puzzle = spec.puzzles().get(i);
             var beat = narration.puzzles().get(i);
             script.append("PUZZLE ").append(i + 1).append(" — ").append(puzzle.title()).append("\n")
@@ -63,7 +65,7 @@ class StudioRenderer {
     }
 
     private static EpisodeNarration fallbackNarration(EpisodeSpec spec) {
-        var beats = java.util.stream.IntStream.range(0, 3).mapToObj(i -> {
+        var beats = java.util.stream.IntStream.range(0, spec.puzzles().size()).mapToObj(i -> {
             var p = spec.puzzles().get(i);
             return new EpisodeNarration.PuzzleNarration(i + 1,
                 "A cheerful mini mystery is unfolding with three lively choices and one clever surprise in the picture. Which option solves this friendly puzzle today?",
@@ -75,22 +77,23 @@ class StudioRenderer {
     }
 
     Path render(EpisodeSpec spec, Path dir, boolean draft) throws Exception {
-        return render(spec, dir, draft, null);
+        return render(spec, dir, draft, null, "BRAIN BOOSTER LAB");
     }
 
-    Path render(EpisodeSpec spec, Path dir, boolean draft, EpisodeSpeech speech) throws Exception {
+    Path render(EpisodeSpec spec, Path dir, boolean draft, EpisodeSpeech speech) throws Exception { return render(spec, dir, draft, speech, "BRAIN BOOSTER LAB"); }
+    Path render(EpisodeSpec spec, Path dir, boolean draft, EpisodeSpeech speech, String channelName) throws Exception {
         if (speech != null) speech.validate(spec);
         Path frames = dir.resolve(draft ? "draft-frames" : "final-frames");
         Files.createDirectories(frames);
         var sequence = new FrameSequence(frames);
         BufferedImage previous = null;
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < spec.puzzles().size(); i++) {
             var puzzle = spec.puzzles().get(i);
             var art = readArt(dir, i);
             var overlay = SceneOverlay.read(dir, i, puzzle);
             boolean visual = "visual".equals(puzzle.kind());
             if (i > 0 && visual && "visual".equals(spec.puzzles().get(i - 1).kind())) {
-                var next = composed(puzzle, art, i, "question", VISUAL_QUESTION_SECONDS, draft, overlay, 1.2);
+                var next = composed(puzzle, art, i, "question", VISUAL_QUESTION_SECONDS, draft, overlay, 1.2, channelName, spec.puzzles().size());
                 for (int tick = 1; tick <= PuzzleMotion.TRANSITION_TICKS; tick++)
                     sequence.add(PuzzleMotion.transition(previous, next, (double)tick / PuzzleMotion.TRANSITION_TICKS), 1);
             }
@@ -105,19 +108,19 @@ class StudioRenderer {
                     if (phase.equals("reveal")) {
                         int animatedTicks = Math.min(PuzzleMotion.REVEAL_TICKS, totalTicks);
                         for (int tick = 0; tick < animatedTicks; tick++) {
-                            previous = composed(puzzle, art, i, phase, 0, draft, overlay, (double)tick / PuzzleMotion.FPS);
+                            previous = composed(puzzle, art, i, phase, 0, draft, overlay, (double)tick / PuzzleMotion.FPS, channelName, spec.puzzles().size());
                             sequence.add(previous, 1);
                         }
                         for (int tick = animatedTicks; tick < totalTicks; tick += 15) {
                             int duration = Math.min(15, totalTicks - tick);
-                            previous = composed(puzzle, art, i, phase, 0, draft, overlay, (double)tick / PuzzleMotion.FPS);
+                            previous = composed(puzzle, art, i, phase, 0, draft, overlay, (double)tick / PuzzleMotion.FPS, channelName, spec.puzzles().size());
                             sequence.add(previous, duration);
                         }
                     } else {
                         for (int tick = 0; tick < totalTicks; tick += 15) {
                             int duration = Math.min(15, totalTicks - tick);
                             int countdown = phase.equals("question") ? Math.max(1, VISUAL_QUESTION_SECONDS - tick / PuzzleMotion.FPS) : 0;
-                            previous = composed(puzzle, art, i, phase, countdown, draft, overlay, (double)tick / PuzzleMotion.FPS);
+                            previous = composed(puzzle, art, i, phase, countdown, draft, overlay, (double)tick / PuzzleMotion.FPS, channelName, spec.puzzles().size());
                             sequence.add(previous, duration);
                         }
                     }
@@ -125,7 +128,7 @@ class StudioRenderer {
                 }
                 int framesInPhase = phase.equals("question") ? seconds : 1;
                 for (int t = 0; t < framesInPhase; t++) {
-                    previous = composed(puzzle, art, i, phase, phase.equals("question") ? seconds - t : 0, draft, overlay, 1.2);
+                    previous = composed(puzzle, art, i, phase, phase.equals("question") ? seconds - t : 0, draft, overlay, 1.2, channelName, spec.puzzles().size());
                     int duration = framesInPhase == 1 ? seconds : 1;
                     sequence.add(previous, duration * PuzzleMotion.FPS);
                 }
@@ -250,8 +253,8 @@ class StudioRenderer {
     }
 
     private BufferedImage composed(EpisodeSpec.Puzzle p, BufferedImage art, int index, String phase, int countdown,
-                                   boolean draft, SceneOverlay overlay, double time) {
-        return "visual".equals(p.kind()) ? KidsFrameRenderer.frame(p, art, index, phase, countdown, draft, overlay, time)
+                                   boolean draft, SceneOverlay overlay, double time, String channelName, int puzzleCount) {
+        return "visual".equals(p.kind()) ? KidsFrameRenderer.frame(p, art, index, phase, countdown, draft, overlay, time, channelName, puzzleCount)
             : frame(p, art, index, phase, countdown, draft);
     }
 
