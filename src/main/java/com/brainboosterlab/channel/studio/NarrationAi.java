@@ -88,7 +88,7 @@ class NarrationAi {
             Return the required structured object. Episode specification:
             """ + json.writeValueAsString(spec) + operatorSuffix(operatorDirection);
         var response = client.responses().create(ResponseCreateParams.builder().model(activeModel).input(prompt)
-            .store(false).reasoning(Reasoning.builder().effort(ReasoningEffort.HIGH).build())
+            .store(false).reasoning(Reasoning.builder().effort(ReasoningEffort.LOW).build())
             .maxOutputTokens(7000).text(EpisodeNarration.class).build());
         EpisodeNarration narration = response.output().stream().flatMap(item -> item.message().stream())
             .flatMap(message -> message.content().stream()).flatMap(content -> content.outputText().stream()).findFirst()
@@ -122,7 +122,7 @@ class NarrationAi {
             in notes. Do not rubber-stamp.
             Specification: """ + json.writeValueAsString(spec) + "\nNarration: " + json.writeValueAsString(narration) + operatorSuffix(operatorDirection);
         var response = client.responses().create(ResponseCreateParams.builder().model(activeModel).input(prompt)
-            .store(false).reasoning(Reasoning.builder().effort(ReasoningEffort.HIGH).build())
+            .store(false).reasoning(Reasoning.builder().effort(ReasoningEffort.MEDIUM).build())
             .maxOutputTokens(7000).text(Review.class).build());
         return response.output().stream().flatMap(item -> item.message().stream())
             .flatMap(message -> message.content().stream()).flatMap(content -> content.outputText().stream()).findFirst()
@@ -171,7 +171,7 @@ class NarrationAi {
         var message = EasyInputMessage.builder().role(EasyInputMessage.Role.USER).contentOfResponseInputMessageContentList(content).build();
         var response = client.responses().create(ResponseCreateParams.builder().model(activeModel)
             .inputOfResponse(List.of(ResponseInputItem.ofEasyInputMessage(message))).store(false)
-            .reasoning(Reasoning.builder().effort(ReasoningEffort.HIGH).build())
+            .reasoning(Reasoning.builder().effort(ReasoningEffort.MEDIUM).build())
             .maxOutputTokens(10000).text(NarrationGrounding.class).build());
         NarrationGrounding grounded = NarrationGrounding.normalize(response.output().stream().flatMap(item -> item.message().stream())
             .flatMap(item -> item.content().stream()).flatMap(item -> item.outputText().stream()).findFirst()

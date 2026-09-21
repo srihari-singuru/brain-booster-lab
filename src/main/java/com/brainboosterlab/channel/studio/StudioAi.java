@@ -12,6 +12,7 @@ import java.io.ByteArrayInputStream;
 import java.nio.file.*;
 import java.time.Instant;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import javax.imageio.ImageIO;
@@ -98,6 +99,31 @@ class StudioAi {
         EpisodeSpec.require(puzzleCount >= 1 && puzzleCount <= 10, "Choose between 1 and 10 puzzles");
         String activeModel = requestedModel == null || requestedModel.isBlank() ? model : requestedModel.trim();
         if (!"live".equals(generationMode)) return new Draft(PilotFixtures.kids(), "local-fixture", "none");
+        // Astra can take too long to return a large strict-schema response with rich
+        // scenes. Generate independent puzzles sequentially instead: every
+        // request has a small, complete contract, while the accumulated titles still
+        // protect against repeated premises within the episode.
+        if (puzzleCount > 1) {
+            var puzzles = new ArrayList<EpisodeSpec.Puzzle>();
+            var usedAnswers = new ArrayList<String>();
+            String noRepeat = recentPuzzleTitles == null ? "" : recentPuzzleTitles.trim();
+            String lastResponseId = "";
+            for (int number = 1; number <= puzzleCount; number++) {
+                Draft one = generate(brief, 1, activeModel, operatorDirection, noRepeat, recovery);
+                EpisodeSpec.Puzzle puzzle = one.spec().puzzles().getFirst();
+                puzzles.add(puzzle);
+                lastResponseId = one.responseId();
+                usedAnswers.add(puzzle.answerId());
+                noRepeat = (noRepeat.isBlank() ? "" : noRepeat + "\n")
+                    + "TITLE: " + puzzle.title()
+                    + " | QUESTION: " + puzzle.question()
+                    + " | CLUE/REVEAL: " + puzzle.explanation()
+                    + " | CORRECT OPTION: " + puzzle.answerId()
+                    + "\nCURRENT EPISODE ANSWER DISTRIBUTION: already used " + String.join(", ", usedAnswers)
+                    + ". Choose a different correct OPTION letter when 3+ choices make that possible.";
+            }
+            return new Draft(new EpisodeSpec("Fresh Family Puzzle Collection", List.copyOf(puzzles)), activeModel, lastResponseId);
+        }
         String prompt = """
             Create %d original illustrated visual mini-mysteries for a family channel: children ages 6–18
             solving lively challenges with parents. Set kind="visual" for EVERY puzzle. Each is a satisfying
@@ -122,6 +148,9 @@ class StudioAi {
             when there is more than one puzzle. Choices must be consecutive OPTION letters starting at A
             (A/B/C, A/B/C/D, or A/B/C/D/E). All candidates must be equally plausible at first glance and the
             correct one must be proven by the picture, not by a suspicious expression or obvious category mismatch.
+            Spread correct OPTION letters across an episode: do not repeatedly make the same position correct when
+            other valid options are available. When the no-repeat list contains CURRENT EPISODE ANSWER DISTRIBUTION,
+            choose a different correct letter from that list whenever possible.
             The clue must be large enough to see on a phone but subtle enough to reward a second look. Avoid
             alternate explanations. Friendly fantasy and monsters are welcome, but never frightening, cruel, or
             implying real people are nonhuman. Never use skin color, disability, body differences, or cultural
@@ -150,18 +179,55 @@ class StudioAi {
             neon skin, plastic 3D rendering or visual noise. Do not copy channel characters or designs.
             thinkSeconds: 8–15; use 8 for every visual puzzle.
             Original creative brief follows:
-            """.formatted(puzzleCount, recovery ? "900" : "1600") + brief + recentTitleSuffix(recentPuzzleTitles)
+            """.formatted(puzzleCount, recovery ? "750" : (puzzleCount >= 4 ? "900" : "1200")) + brief + recentTitleSuffix(recentPuzzleTitles)
             + (recovery ? "\nRECOVERY MODE: A prior response could not be decoded. Return the complete schema only. Keep every field concise, especially sceneDescription; do not omit any puzzle or use markdown.\n" : "")
             + operatorSuffix(operatorDirection);
         var response = client.responses().create(ResponseCreateParams.builder().model(activeModel).input(prompt)
-            .store(false).reasoning(Reasoning.builder().effort(ReasoningEffort.HIGH).build())
-            .maxOutputTokens(12000).text(EpisodeSpec.class).build());
+            // Creative drafting needs breadth, not a large reasoning budget. This
+            // keeps multi-puzzle requests comfortably within the UI deadline.
+            .store(false).reasoning(Reasoning.builder().effort(ReasoningEffort.LOW).build())
+            .maxOutputTokens(puzzleCount >= 4 ? 7500 : 6500).text(EpisodeSpec.class).build());
         EpisodeSpec spec = response.output().stream().flatMap(i -> i.message().stream())
             .flatMap(m -> m.content().stream()).flatMap(c -> c.outputText().stream()).findFirst()
             .orElseThrow(() -> new IllegalStateException("No complete structured episode returned"));
+        spec = normalizeOptionIds(spec);
+        // A model can occasionally over-produce despite the strict schema. In a
+        // one-puzzle batch, keep exactly its first complete puzzle so the caller's
+        // requested count remains authoritative; later batches receive its title,
+        // clue, and answer position as no-repeat context.
+        EpisodeSpec.require(spec.puzzles() != null && !spec.puzzles().isEmpty(), "The script returned no puzzles; retry generation");
+        if (puzzleCount == 1 && spec.puzzles().size() != 1)
+            spec = new EpisodeSpec(spec.title(), List.of(spec.puzzles().getFirst()));
         // Persist the paid structured response before local/independent validation in the service.
         EpisodeSpec.require(spec.puzzles().size() == puzzleCount, "The script returned the wrong number of puzzles; retry generation");
         return new Draft(spec, activeModel, response.id());
+    }
+
+    /** Models occasionally spell identifiers as "OPTION C"; storage uses canonical A–E IDs. */
+    private static EpisodeSpec normalizeOptionIds(EpisodeSpec source) {
+        if (source.puzzles() == null) return source;
+        var puzzles = new ArrayList<EpisodeSpec.Puzzle>();
+        for (EpisodeSpec.Puzzle puzzle : source.puzzles()) {
+            if (puzzle == null || puzzle.choices() == null) { puzzles.add(puzzle); continue; }
+            var choices = new ArrayList<EpisodeSpec.Choice>();
+            for (int i = 0; i < puzzle.choices().size(); i++) {
+                EpisodeSpec.Choice choice = puzzle.choices().get(i);
+                choices.add(new EpisodeSpec.Choice(String.valueOf((char) ('A' + i)), choice.label(), choice.statement()));
+            }
+            puzzles.add(new EpisodeSpec.Puzzle(puzzle.kind(), puzzle.title(), puzzle.setup(), puzzle.question(), puzzle.facts(),
+                List.copyOf(choices), optionId(puzzle.answerId()), puzzle.explanation(), puzzle.sceneDescription(), puzzle.thinkSeconds()));
+        }
+        return new EpisodeSpec(source.title(), List.copyOf(puzzles));
+    }
+
+    private static String optionId(String raw) {
+        if (raw == null) return null;
+        String value = raw.trim().toUpperCase(java.util.Locale.ROOT);
+        for (int i = value.length() - 1; i >= 0; i--) {
+            char candidate = value.charAt(i);
+            if (candidate >= 'A' && candidate <= 'E') return String.valueOf(candidate);
+        }
+        return raw;
     }
 
     Review review(EpisodeSpec spec) {
@@ -197,7 +263,7 @@ class StudioAi {
             + "This is an adversarial review, not a request to endorse. Questions: " + json.writeValueAsString(questions)
             + operatorSuffix(operatorDirection);
         var response = client.responses().create(ResponseCreateParams.builder().model(activeModel).input(prompt)
-            .store(false).reasoning(Reasoning.builder().effort(ReasoningEffort.HIGH).build())
+            .store(false).reasoning(Reasoning.builder().effort(ReasoningEffort.MEDIUM).build())
             .maxOutputTokens(10000).text(Review.class).build());
         return response.output().stream().flatMap(i -> i.message().stream()).flatMap(m -> m.content().stream())
             .flatMap(c -> c.outputText().stream()).findFirst().orElseThrow();

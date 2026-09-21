@@ -537,7 +537,7 @@ class StudioService {
         e.status = "FAILED";
         // Never persist raw HTTP bodies/headers, which can contain credentials or signed URLs.
         String type = exception.getClass().getSimpleName();
-        e.lastError = timedOut(exception)
+        e.lastError = timedOut(exception) || "OpenAIIoException".equals(type)
             ? "This stage exceeded its request deadline. No partial response was accepted; retry manually when ready."
             : "OpenAIInvalidDataException".equals(type)
             ? "OpenAI returned an incomplete structured response; no puzzle script was saved. Retry manually to send a shorter recovery request."
