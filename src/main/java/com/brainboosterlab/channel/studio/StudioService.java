@@ -423,21 +423,26 @@ class StudioService {
                 // A creator click authorizes one image request per puzzle. If the local
                 // conformance check finds a concrete mismatch, make at most one targeted
                 // repair request immediately rather than forcing the creator into a dead end.
-                if (!Files.isRegularFile(dir.resolve("art-" + i + ".png"))) {
-                    var puzzle = spec.puzzles().get(i);
+                Path artwork = dir.resolve("art-" + i + ".png");
+                Path conformanceReport = dir.resolve("artwork-conformance-" + i + ".json");
+                var puzzle = spec.puzzles().get(i);
+                if (!Files.isRegularFile(artwork))
                     ai.artwork(puzzle, dir, i, production.imageModel(), stageInstructions(e).forAction("artwork"));
+                // Old saved art is checked once after this upgrade too. Passing work is
+                // retained; only a concrete mismatch may use the bounded repair image.
+                if (!Files.isRegularFile(conformanceReport)) {
                     var conformance = production.equals(defaults)
-                        ? ai.reviewArtwork(dir.resolve("art-" + i + ".png"), puzzle, null)
-                        : ai.reviewArtwork(dir.resolve("art-" + i + ".png"), puzzle, production.textModel());
+                        ? ai.reviewArtwork(artwork, puzzle, null)
+                        : ai.reviewArtwork(artwork, puzzle, production.textModel());
                     if (conformance == null) throw new IllegalStateException("Artwork conformance check returned no result");
                     if (!conformance.acceptable()) {
                         ai.repairArtwork(puzzle, dir, i, production.imageModel(), stageInstructions(e).forAction("artwork"), conformance.repairBrief());
                         conformance = production.equals(defaults)
-                            ? ai.reviewArtwork(dir.resolve("art-" + i + ".png"), puzzle, null)
-                            : ai.reviewArtwork(dir.resolve("art-" + i + ".png"), puzzle, production.textModel());
+                            ? ai.reviewArtwork(artwork, puzzle, null)
+                            : ai.reviewArtwork(artwork, puzzle, production.textModel());
                         if (conformance == null) throw new IllegalStateException("Artwork repair check returned no result");
                     }
-                    Files.writeString(dir.resolve("artwork-conformance-" + i + ".json"), json.writeValueAsString(conformance));
+                    Files.writeString(conformanceReport, json.writeValueAsString(conformance));
                 }
             }
             renderer.previews(spec, dir, production.channelName());
