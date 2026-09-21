@@ -72,11 +72,11 @@ class NarrationAi {
 
             Structure rules:
             - episodeOpening: one fresh welcome, 4–28 words. It will be used in a future opening, not today’s video.
-            - for each puzzle, questionLeadIn: 18–34 words, designed for about ten seconds. Set a mini-story and ask
+            - for each puzzle, questionLeadIn: 22–28 words, designed for exactly ten seconds at the chosen voice speed. Set a mini-story and ask
               the on-screen question naturally, but DO NOT name, label, or hint at the answer or clue. Build a little
               anticipation without repeating the question word-for-word.
-            - timerCue: 3–10 words. It plays exactly when the fixed ten-second silent timer begins. Do not count aloud.
-            - revealExplanation: 18–34 words, designed for about ten seconds. State the correct choice and the exact
+            - timerCue: 5–7 words. It plays immediately before the fixed ten-second silent timer begins. Do not count aloud.
+            - revealExplanation: 22–28 words, designed for exactly ten seconds at the chosen voice speed. State the correct choice and the exact
               visible clue/rule that proves it in a lively, natural way that rewards the viewer’s reasoning.
             - episodeClosing: one fresh 4–28-word sign-off for a future ending.
             - Never use a character name, choice label, or descriptive choice name anywhere in narration. Refer to a choice only as its supplied OPTION letter (A through E).
@@ -115,7 +115,7 @@ class NarrationAi {
             noAnswerLeak is true only when the question lead-in and timer cue do NOT reveal or strongly telegraph the
             correct option, character/name, answer letter, decisive visual clue, or explanation. storyFitsPuzzle is
             true only when the narration uses no invented evidence and the reveal correctly names the right answer and
-            its exact proof, identifying the answer only as the supplied OPTION letter (A through E). It must reject any use of a choice name or label. timeFits is true only when lead-in is 18–34 words, timer cue 3–10, and reveal 18–34.
+            its exact proof, identifying the answer only as the supplied OPTION letter (A through E). It must reject any use of a choice name or label. timeFits is true only when lead-in is 22–28 words, timer cue 5–7, and reveal 22–28.
             familySafe is true only for warm, age-appropriate language with no pressure, shame, fear, stereotypes or
             unsafe claims. Be adversarial: reject generic filler, babyish delivery, classroom-like explanation, and ambiguous proof. Put concise actionable feedback
             in notes. Do not rubber-stamp.

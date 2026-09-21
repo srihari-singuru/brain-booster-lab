@@ -38,9 +38,11 @@ class SpeechAi {
     }
     private static final Set<String> VOICES = Set.of("alloy", "ash", "ballad", "coral", "echo", "fable",
         "nova", "onyx", "sage", "shimmer", "verse", "marin", "cedar");
-    // One rate across every phase prevents perceptible pacing shifts; pitch remains instruction-guided.
+    // One selected speed across every phase; deterministic slot lengths prevent perceptible pacing shifts.
     private static final double STANDARD_SPEECH_SPEED = 1.00;
-    private static final double TARGET_WORDS_PER_MINUTE = 155.0;
+    private static final double QUESTION_SECONDS_AT_1X = 10.0;
+    private static final double TIMER_CUE_SECONDS_AT_1X = 2.6;
+    private static final double REVEAL_SECONDS_AT_1X = 10.0;
     private static final Pattern WORD = Pattern.compile("[\\p{L}\\p{N}]+", Pattern.UNICODE_CHARACTER_CLASS);
     private final String mode;
     private final String model;
@@ -77,9 +79,9 @@ class SpeechAi {
         List<EpisodeSpeech.PuzzleSpeech> tracks = new ArrayList<>();
         for (int i = 0; i < spec.puzzles().size(); i++) {
             EpisodeNarration.PuzzleNarration beat = narration.puzzles().get(i);
-            double question = synthesize(beat.questionLeadIn(), directory.resolve("speech-question-" + i + ".wav"), questionDirection() + operatorSuffix(operatorDirection), profile);
-            double timer = synthesize(beat.timerCue(), directory.resolve("speech-timer-" + i + ".wav"), timerDirection() + operatorSuffix(operatorDirection), profile);
-            double reveal = synthesize(beat.revealExplanation(), directory.resolve("speech-reveal-" + i + ".wav"), revealDirection() + operatorSuffix(operatorDirection), profile);
+            double question = synthesize(beat.questionLeadIn(), directory.resolve("speech-question-" + i + ".wav"), questionDirection() + operatorSuffix(operatorDirection), profile, "question");
+            double timer = synthesize(beat.timerCue(), directory.resolve("speech-timer-" + i + ".wav"), timerDirection() + operatorSuffix(operatorDirection), profile, "timer");
+            double reveal = synthesize(beat.revealExplanation(), directory.resolve("speech-reveal-" + i + ".wav"), revealDirection() + operatorSuffix(operatorDirection), profile, "reveal");
             tracks.add(new EpisodeSpeech.PuzzleSpeech(i + 1, question, timer, reveal));
         }
         EpisodeSpeech speech = new EpisodeSpeech(profile.model(), profile.voice(), tracks);
@@ -96,9 +98,9 @@ class SpeechAi {
         List<EpisodeSpeech.PuzzleSpeech> tracks = new ArrayList<>();
         for (int i = 0; i < spec.puzzles().size(); i++) {
             var beat = narration.puzzles().get(i);
-            double question = normalizePace(directory.resolve("speech-question-" + i + ".wav"), beat.questionLeadIn(), directory, profile.speed());
-            double timer = normalizePace(directory.resolve("speech-timer-" + i + ".wav"), beat.timerCue(), directory, profile.speed());
-            double reveal = normalizePace(directory.resolve("speech-reveal-" + i + ".wav"), beat.revealExplanation(), directory, profile.speed());
+            double question = normalizePace(directory.resolve("speech-question-" + i + ".wav"), beat.questionLeadIn(), directory, targetSecondsFor("question", profile.speed()));
+            double timer = normalizePace(directory.resolve("speech-timer-" + i + ".wav"), beat.timerCue(), directory, targetSecondsFor("timer", profile.speed()));
+            double reveal = normalizePace(directory.resolve("speech-reveal-" + i + ".wav"), beat.revealExplanation(), directory, targetSecondsFor("reveal", profile.speed()));
             tracks.add(new EpisodeSpeech.PuzzleSpeech(i + 1, question, timer, reveal));
         }
         EpisodeSpeech speech = new EpisodeSpeech(profile.model(), profile.voice(), tracks);
@@ -121,26 +123,24 @@ class SpeechAi {
         return new Draft(speech);
     }
 
-    private double synthesize(String input, Path target, String instructions, Profile profile) throws Exception {
+    private double synthesize(String input, Path target, String instructions, Profile profile, String slot) throws Exception {
         Path pending = target.resolveSibling(target.getFileName() + ".pending");
         try (HttpResponse response = client.audio().speech().create(SpeechCreateParams.builder()
                 .model(profile.model()).voice(profile.voice()).input(input).instructions(instructions).speed(profile.speed())
                 .responseFormat(SpeechCreateParams.ResponseFormat.WAV).build())) {
             Files.copy(response.body(), pending, StandardCopyOption.REPLACE_EXISTING);
         }
-        double seconds = normalizePace(pending, input, target.getParent(), profile.speed());
+        double seconds = normalizePace(pending, input, target.getParent(), targetSecondsFor(slot, profile.speed()));
         Files.move(pending, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
         return seconds;
     }
 
-    private double normalizePace(Path wav, String spokenText, Path directory, double requestedSpeed) throws Exception {
+    private double normalizePace(Path wav, String spokenText, Path directory, double targetSeconds) throws Exception {
         if (!Files.isRegularFile(wav)) throw new IllegalStateException("Missing local speech clip " + wav.getFileName());
         long words = WORD.matcher(spokenText).results().count();
         if (words == 0) throw new IllegalStateException("Speech text has no words to pace");
         double original = duration(wav);
-        double targetSeconds = words * 60.0 / (TARGET_WORDS_PER_MINUTE * requestedSpeed);
         double tempo = original / targetSeconds;
-        if (Math.abs(tempo - 1.0) < .015) return original;
         EpisodeSpec.require(tempo >= .50 && tempo <= 2.0, "Generated speech pace is outside the safe correction range");
         Path paced = wav.resolveSibling(wav.getFileName() + ".paced.wav");
         var process = new ProcessBuilder(ffmpeg, "-y", "-v", "warning", "-i", wav.toString(), "-filter:a",
@@ -155,6 +155,19 @@ class SpeechAi {
         double normalized = duration(paced);
         Files.move(paced, wav, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
         return normalized;
+    }
+
+    /** One globally selected speed, with constant phase durations across every puzzle. */
+    static double targetSecondsFor(String slot, double speed) {
+        EpisodeSpec.require(Double.isFinite(speed) && speed >= .75 && speed <= 1.25,
+            "Voice speed must be between 0.75 and 1.25");
+        double atOneX = switch (slot) {
+            case "question" -> QUESTION_SECONDS_AT_1X;
+            case "timer" -> TIMER_CUE_SECONDS_AT_1X;
+            case "reveal" -> REVEAL_SECONDS_AT_1X;
+            default -> throw new IllegalArgumentException("Unknown speech slot");
+        };
+        return atOneX / speed;
     }
 
     private static double duration(Path wav) throws Exception {
@@ -197,13 +210,13 @@ class SpeechAi {
     }
 
     private static String questionDirection() {
-        return "Bright, energetic adult male family-challenge host for children ages 6 to 18 and parents. Sound delighted, playful and naturally animated, with clear English, a natural bright medium pitch, and a steady, consistent medium pace throughout. Keep the same confident rhythm from the first word to the last. Lift exciting words and questions, smile in the delivery, and make every discovery feel fun. Never sound flat, sleepy, robotic, babyish, classroom-like, or like a frantic game-show host. Be confidently audible without shouting. Speak exactly the supplied words and do not add a greeting.";
+        return "Bright, energetic adult male family-challenge host for children ages 6 to 18 and parents. This clip is one section of a single continuous episode: use the same confident, conversational rhythm as every other question and reveal. Sound delighted, playful and naturally animated, with clear English and a natural bright medium pitch. Use steady phrasing with only brief natural punctuation pauses; do not rush exciting words or drag reflective phrases. Lift questions warmly, smile in the delivery, and make every discovery feel fun. Never sound flat, sleepy, robotic, babyish, classroom-like, or like a frantic game-show host. Be confidently audible without shouting. Speak exactly the supplied words and do not add a greeting.";
     }
     private static String timerDirection() {
-        return "Energetic adult male timer cue for a family visual challenge. Deliver the line with a bright, exciting launch, a natural bright medium pitch, and the same steady medium pace as the narration. Keep the rhythm consistent and the words crisp and clear. Say it exactly once; do not count, add sound effects, or add extra words.";
+        return "Energetic adult male timer cue for the same family-challenge host. Match the question narration's bright medium pitch, volume, and steady conversational rhythm. Use a brisk but unhurried launch with crisp, clear words. Say it exactly once; do not count, add sound effects, insert a dramatic pause, or add extra words.";
     }
     private static String revealDirection() {
-        return "Bright, expressive adult male family-challenge host for children ages 6 to 18 and parents. Make the answer feel like a cheerful aha moment: warmly celebrate the discovery, then clearly explain the proof. Natural English, a natural bright medium pitch, lively emphasis, and the same steady medium pace as the question narration. Do not speed up at the reveal; no baby talk, flat delivery, classroom tone, or exaggerated game-show shouting. Speak exactly the supplied words.";
+        return "Bright, expressive adult male family-challenge host for children ages 6 to 18 and parents. This clip continues the same narration take: match the question narration's bright medium pitch, volume, and steady conversational rhythm. Make the answer a cheerful aha moment, warmly celebrate the discovery, then clearly explain the proof. Use lively emphasis without speeding up at the reveal. No baby talk, flat delivery, classroom tone, or exaggerated game-show shouting. Speak exactly the supplied words.";
     }
     private static String operatorSuffix(String direction) {
         return direction == null || direction.isBlank() ? "" : " Additional operator direction: " + direction.trim();
