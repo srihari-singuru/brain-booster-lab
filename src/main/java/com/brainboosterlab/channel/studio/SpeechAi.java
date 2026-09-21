@@ -23,8 +23,8 @@ class SpeechAi {
     record Draft(EpisodeSpeech speech) {}
     private static final Set<String> VOICES = Set.of("alloy", "ash", "ballad", "coral", "echo", "fable",
         "nova", "onyx", "sage", "shimmer", "verse", "marin", "cedar");
-    // The Speech API exposes speed numerically; pitch is intentionally guided in the delivery instructions.
-    private static final double QUESTION_SPEED = 1.05, TIMER_CUE_SPEED = 1.00, REVEAL_SPEED = 1.05;
+    // One rate across every phase prevents perceptible pacing shifts; pitch remains instruction-guided.
+    private static final double STANDARD_SPEECH_SPEED = 1.00;
     private final String mode;
     private final String model;
     private final String voice;
@@ -51,9 +51,9 @@ class SpeechAi {
         List<EpisodeSpeech.PuzzleSpeech> tracks = new ArrayList<>();
         for (int i = 0; i < spec.puzzles().size(); i++) {
             EpisodeNarration.PuzzleNarration beat = narration.puzzles().get(i);
-            double question = synthesize(beat.questionLeadIn(), directory.resolve("speech-question-" + i + ".wav"), questionDirection(), QUESTION_SPEED);
-            double timer = synthesize(beat.timerCue(), directory.resolve("speech-timer-" + i + ".wav"), timerDirection(), TIMER_CUE_SPEED);
-            double reveal = synthesize(beat.revealExplanation(), directory.resolve("speech-reveal-" + i + ".wav"), revealDirection(), REVEAL_SPEED);
+            double question = synthesize(beat.questionLeadIn(), directory.resolve("speech-question-" + i + ".wav"), questionDirection(), STANDARD_SPEECH_SPEED);
+            double timer = synthesize(beat.timerCue(), directory.resolve("speech-timer-" + i + ".wav"), timerDirection(), STANDARD_SPEECH_SPEED);
+            double reveal = synthesize(beat.revealExplanation(), directory.resolve("speech-reveal-" + i + ".wav"), revealDirection(), STANDARD_SPEECH_SPEED);
             tracks.add(new EpisodeSpeech.PuzzleSpeech(i + 1, question, timer, reveal));
         }
         EpisodeSpeech speech = new EpisodeSpeech(model, voice, tracks);
@@ -128,12 +128,12 @@ class SpeechAi {
     }
 
     private static String questionDirection() {
-        return "Bright, energetic adult male storyteller for children ages 6 to 10. Sound delighted, playful and naturally animated, with clear English, a natural bright medium pitch, and a slightly quicker, lively pace. Lift the exciting words and questions, smile in the delivery, and make every discovery feel fun. Never sound flat, sleepy, robotic, like a baby voice, or like a frantic game-show host. Be confidently audible without shouting. Speak exactly the supplied words and do not add a greeting.";
+        return "Bright, energetic adult male storyteller for children ages 6 to 10. Sound delighted, playful and naturally animated, with clear English, a natural bright medium pitch, and a steady, consistent medium pace throughout. Keep the same calm rhythm from the first word to the last. Lift the exciting words and questions, smile in the delivery, and make every discovery feel fun. Never sound flat, sleepy, robotic, like a baby voice, or like a frantic game-show host. Be confidently audible without shouting. Speak exactly the supplied words and do not add a greeting.";
     }
     private static String timerDirection() {
-        return "Energetic adult male timer cue for children. Deliver the line with a bright, exciting launch, a natural bright medium pitch, and crisp, clear words. Say it exactly once; do not count, add sound effects, or add extra words.";
+        return "Energetic adult male timer cue for children. Deliver the line with a bright, exciting launch, a natural bright medium pitch, and the same steady medium pace as the narration. Keep the rhythm consistent and the words crisp and clear. Say it exactly once; do not count, add sound effects, or add extra words.";
     }
     private static String revealDirection() {
-        return "Bright, expressive adult male storyteller for children ages 6 to 10. Make the answer feel like a cheerful aha moment: warmly celebrate the discovery, then clearly explain the proof. Natural English, a natural bright medium pitch, and lively emphasis, no baby talk, no flat delivery, and no exaggerated game-show shouting. Speak exactly the supplied words.";
+        return "Bright, expressive adult male storyteller for children ages 6 to 10. Make the answer feel like a cheerful aha moment: warmly celebrate the discovery, then clearly explain the proof. Natural English, a natural bright medium pitch, lively emphasis, and the same steady medium pace as the question narration. Do not speed up at the reveal, no baby talk, no flat delivery, and no exaggerated game-show shouting. Speak exactly the supplied words.";
     }
 }
