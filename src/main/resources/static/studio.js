@@ -21,6 +21,16 @@ const el = (tag, text, className) => { const node = document.createElement(tag);
 const settings = e => e?.settings || defaultSettings;
 const media = (e, file) => `${api}/${e.id}/media/${file}`;
 const title = e => e.spec?.title || 'New puzzle episode';
+function lockPlaybackToNormalSpeed(player) {
+  // A review video must always be judged at the production rate. Some browsers
+  // retain a changed media speed, so enforce the one-second timer contract here.
+  player.defaultPlaybackRate = 1;
+  player.playbackRate = 1;
+  player.addEventListener('ratechange', () => {
+    if (player.playbackRate !== 1) player.playbackRate = 1;
+  });
+  return player;
+}
 
 function notice(text) { const node = by('notice'); node.textContent = text; node.hidden = !text; }
 function isReviewed(e) { return !!e.review?.findings?.length && e.review.findings.every(f => f.fair && e.spec?.puzzles?.[f.puzzleNumber - 1]?.answerId === f.independentlySolvedAnswerId); }
@@ -403,18 +413,18 @@ function groundingOutput(e, pane) {
 function voiceOutput(e, pane) {
   outputTitle(pane, 'Generated result', 'Voice clips');
   if (!e.speechReady) return emptyOutput(pane, 'The generated voice track will appear here.');
-  const audio = document.createElement('audio'); audio.controls = true; audio.src = media(e, 'speech.m4a'); pane.append(audio, el('p', `Voice: ${e.speechVoice || settings(e).speechVoice} · speed ${settings(e).speechSpeed}×`, 'media-caption'));
+  const audio = lockPlaybackToNormalSpeed(document.createElement('audio')); audio.controls = true; audio.src = media(e, 'speech.m4a'); pane.append(audio, el('p', `Voice: ${e.speechVoice || settings(e).speechVoice} · speed ${settings(e).speechSpeed}×`, 'media-caption'));
   pane.append(el('p', 'Each puzzle is rendered from its own measured question, cue, and answer clips. The countdown remains exactly 8.0 seconds; the 2.5-second transition has no voice.', 'track-line'));
-  e.speech?.puzzles?.forEach(track => pane.append(el('p', `Puzzle ${track.puzzleNumber}: question ${Number(track.questionSeconds).toFixed(1)}s · cue ${Number(track.timerSeconds).toFixed(1)}s · answer ${Number(track.revealSeconds).toFixed(1)}s.`, 'track-line')));
+  e.speech?.puzzles?.forEach(track => pane.append(el('p', `Puzzle ${track.puzzleNumber}: question ${Number(track.questionSeconds).toFixed(1)}s · cue ${Number(track.timerCueSeconds).toFixed(1)}s · countdown 8.0s · answer ${Number(track.revealSeconds).toFixed(1)}s.`, 'track-line')));
 }
 function videoOutput(e, pane, kind) {
   const final = kind === 'final'; outputTitle(pane, 'Generated result', final ? 'Final video' : 'Preview video');
   const ready = final ? e.finalReady : e.previewReady; if (!ready) return emptyOutput(pane, final ? 'The approved final video will appear here.' : 'The reviewable preview video will appear here.');
-  const video = document.createElement('video'); video.controls = true; video.preload = 'metadata'; video.src = media(e, final ? 'final.mp4' : 'preview.mp4'); pane.append(video);
+  const video = lockPlaybackToNormalSpeed(document.createElement('video')); video.controls = true; video.preload = 'metadata'; video.src = media(e, final ? 'final.mp4' : 'preview.mp4'); pane.append(video);
   const download = el('a', final ? 'Download final video' : 'Open preview video', 'secondary link-button'); download.href = video.src; download.target = '_blank'; pane.append(download);
   if (!final && e.speech?.puzzles?.length) {
     pane.append(el('h4', 'Individual puzzle clips'));
-    e.speech.puzzles.forEach(track => { const clip = document.createElement('video'); clip.controls = true; clip.preload = 'metadata'; clip.src = media(e, `preview-puzzle-${track.puzzleNumber}.mp4`); pane.append(el('p', `Puzzle ${track.puzzleNumber}`, 'output-kicker'), clip); });
+    e.speech.puzzles.forEach(track => { const clip = lockPlaybackToNormalSpeed(document.createElement('video')); clip.controls = true; clip.preload = 'metadata'; clip.src = media(e, `preview-puzzle-${track.puzzleNumber}.mp4`); pane.append(el('p', `Puzzle ${track.puzzleNumber}`, 'output-kicker'), clip); });
   }
 }
 function approvalOutput(e, pane) {
