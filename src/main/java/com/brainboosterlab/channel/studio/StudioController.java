@@ -17,7 +17,6 @@ class StudioController {
     record BriefUpdate(@NotBlank @Size(max = 4000) String brief) {}
     record RestyleOptions(List<SceneOverlay.Region> clueRegions) {}
     record ArtworkSelection(List<Integer> puzzleNumbers) {}
-    record PuzzleNumber(Integer puzzleNumber) {}
     private final StudioService studio;
     private final OpenAiModelCatalog models;
     StudioController(StudioService studio, OpenAiModelCatalog models) { this.studio = studio; this.models = models; }
@@ -39,15 +38,20 @@ class StudioController {
     @PostMapping(value = "/{id}/continue-with-review-warnings", consumes = "application/json") StudioService.View continueWithReviewWarnings(@PathVariable UUID id) {
         return studio.continueWithReviewWarnings(id);
     }
-    @PostMapping(value = "/{id}/regenerate-review-puzzle", consumes = "application/json") StudioService.View regenerateReviewPuzzle(@PathVariable UUID id,
-        @RequestBody PuzzleNumber request) { return studio.startReviewPuzzleRegeneration(id, request == null ? null : request.puzzleNumber()); }
+    @PostMapping(value = "/{id}/regenerate-failed-puzzles", consumes = "application/json") StudioService.View regenerateFailedPuzzles(@PathVariable UUID id) {
+        return studio.startFailedReviewPuzzlesRegeneration(id);
+    }
     @PostMapping(value = "/{id}/narration", consumes = "application/json") StudioService.View narration(@PathVariable UUID id) { return studio.startNarration(id); }
     @PostMapping(value = "/{id}/ground-narration", consumes = "application/json") StudioService.View groundNarration(@PathVariable UUID id) { return studio.startGroundNarration(id); }
     @PostMapping(value = "/{id}/continue-with-grounding-warnings", consumes = "application/json") StudioService.View continueWithGroundingWarnings(@PathVariable UUID id) {
         return studio.continueWithGroundingWarnings(id);
     }
-    @PostMapping(value = "/{id}/regenerate-grounding-artwork", consumes = "application/json") StudioService.View regenerateGroundingArtwork(@PathVariable UUID id,
-        @RequestBody PuzzleNumber request) { return studio.startGroundingArtworkRegeneration(id, request == null ? null : request.puzzleNumber()); }
+    @PostMapping(value = "/{id}/regenerate-failed-artwork", consumes = "application/json") StudioService.View regenerateFailedArtwork(@PathVariable UUID id) {
+        return studio.startFailedArtworkRegeneration(id);
+    }
+    @PostMapping(value = "/{id}/regenerate-grounding-artwork", consumes = "application/json") StudioService.View regenerateGroundingArtwork(@PathVariable UUID id) {
+        return studio.startFailedGroundingArtworkRegeneration(id);
+    }
     @PostMapping(value = "/{id}/apply-grounded-narration", consumes = "application/json") StudioService.View applyGroundedNarration(@PathVariable UUID id) {
         return studio.applyGroundedNarrationCorrection(id);
     }

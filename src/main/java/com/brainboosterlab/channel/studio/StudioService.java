@@ -19,6 +19,7 @@ import tools.jackson.databind.json.JsonMapper;
 /** Local, single-process studio. Slow API/FFmpeg work never holds a database transaction open. */
 @Service
 class StudioService {
+    private record Remediation(int index, String notes) {}
     record View(UUID id, String brief, String status, EpisodeSpec spec, StudioAi.Review review,
                 EpisodeNarration narration, NarrationAi.Review narrationReview, NarrationGrounding narrationGrounding, EpisodeSpeech speech,
                 String lastError, String failedStage, String scriptModel, String responseId, String narrationModel, String narrationResponseId,
@@ -104,17 +105,16 @@ class StudioService {
      */
     synchronized View startGenerate(UUID id) { return start(id, "GENERATING", () -> generate(id)); }
     synchronized View startReview(UUID id) { return start(id, "REVIEWING", () -> review(id)); }
-    /** Replaces one independently rejected concept in a new version; the source episode is never overwritten. */
-    synchronized View startReviewPuzzleRegeneration(UUID id, Integer requestedPuzzleNumber) {
+    /** Replaces every independently rejected concept in one new version; the source episode is never overwritten. */
+    synchronized View startFailedReviewPuzzlesRegeneration(UUID id) {
         var source = find(id);
         require(source.approvedAt == null, "Approved episode is immutable; create a revision");
         var original = spec(source);
-        int index = remediationIndex(requestedPuzzleNumber, original.puzzles().size());
-        var finding = reviewFindingNeedingRemediation(source, original, index);
+        var failures = reviewFailures(source, original);
         var revision = find(revise(id, original).id());
         revision.stageInstructionsJson = source.stageInstructionsJson;
         stage(revision, "GENERATING");
-        launch(revision, () -> regenerateReviewedPuzzle(id, revision.id, index, finding.notes()));
+        launch(revision, () -> regenerateReviewedPuzzles(id, revision.id, failures));
         return view(revision);
     }
     synchronized View continueWithReviewWarnings(UUID id) {
@@ -129,17 +129,28 @@ class StudioService {
     }
     synchronized View startNarration(UUID id) { return start(id, "NARRATING", () -> narration(id)); }
     synchronized View startGroundNarration(UUID id) { return start(id, "NARRATION_GROUNDING", () -> groundNarration(id)); }
-    /** Repairs only the artwork which caused a visual grounding finding, in a new safe revision. */
-    synchronized View startGroundingArtworkRegeneration(UUID id, Integer requestedPuzzleNumber) {
+    /** Repairs all artwork rejected by the visual artwork check, in a new safe revision. */
+    synchronized View startFailedArtworkRegeneration(UUID id) {
         var source = find(id);
         require(source.approvedAt == null, "Approved episode is immutable; create a revision");
         var original = spec(source);
-        int index = remediationIndex(requestedPuzzleNumber, original.puzzles().size());
-        var finding = groundingFindingNeedingArtwork(source, original, index);
+        var failures = artworkFailures(source, original);
         var revision = find(revise(id, original).id());
         inheritForArtworkRemediation(source, revision);
         stage(revision, "PREPARING_ART");
-        launch(revision, () -> regenerateGroundingArtwork(revision.id, index, finding.notes()));
+        launch(revision, () -> regenerateArtworkFailures(revision.id, failures));
+        return view(revision);
+    }
+    /** Repairs all artwork whose final frame failed narration grounding, in a new safe revision. */
+    synchronized View startFailedGroundingArtworkRegeneration(UUID id) {
+        var source = find(id);
+        require(source.approvedAt == null, "Approved episode is immutable; create a revision");
+        var original = spec(source);
+        var failures = groundingArtworkFailures(source, original);
+        var revision = find(revise(id, original).id());
+        inheritForArtworkRemediation(source, revision);
+        stage(revision, "PREPARING_ART");
+        launch(revision, () -> regenerateArtworkFailures(revision.id, failures));
         return view(revision);
     }
     /** Uses the grounding editor's already-produced corrected script, so this is a local, no-credit action. */
@@ -347,25 +358,31 @@ class StudioService {
         return view(repository.saveAndFlush(revision));
     }
 
-    private void regenerateReviewedPuzzle(UUID sourceId, UUID revisionId, int index, String reviewerNotes) {
+    private void regenerateReviewedPuzzles(UUID sourceId, UUID revisionId, List<Remediation> failures) {
         StudioEpisode revision = find(revisionId);
         StudioEpisode source = find(sourceId);
         var original = spec(source);
         try {
             var production = settings(revision);
-            String rejectedPuzzle = json.writeValueAsString(original.puzzles().get(index));
-            String direction = stageInstructions(source).forAction("generate") + "\n\nREMEDIATION: Replace only puzzle " + (index + 1)
-                + ". It failed an independent review. Make a completely fresh picture-first family puzzle with a different setting, clue mechanism, question shape, and answer logic. "
-                + "Do not reuse this rejected puzzle or its concept: " + rejectedPuzzle + "\nReviewer note: " + trimForPrompt(reviewerNotes, 1000);
-            var draft = ai.generate(source.brief, 1, production.textModel(), direction, recentPuzzleTitles(revisionId));
             var puzzles = new ArrayList<>(original.puzzles());
-            puzzles.set(index, draft.spec().puzzles().getFirst());
+            String priorTitles = recentPuzzleTitles(revisionId);
+            String model = null, responseId = null;
+            for (var failure : failures) {
+                String rejectedPuzzle = json.writeValueAsString(original.puzzles().get(failure.index()));
+                String direction = stageInstructions(source).forAction("generate") + "\n\nREMEDIATION: Replace only puzzle " + (failure.index() + 1)
+                    + ". It failed an independent review. Make a completely fresh picture-first family puzzle with a different setting, clue mechanism, question shape, and answer logic. "
+                    + "Do not reuse this rejected puzzle or its concept: " + rejectedPuzzle + "\nReviewer note: " + trimForPrompt(failure.notes(), 1000);
+                var draft = ai.generate(source.brief, 1, production.textModel(), direction, priorTitles);
+                puzzles.set(failure.index(), draft.spec().puzzles().getFirst());
+                priorTitles += "- " + draft.spec().puzzles().getFirst().title() + '\n';
+                model = draft.model(); responseId = draft.responseId();
+            }
             var replacement = new EpisodeSpec(original.title(), List.copyOf(puzzles));
             replacement.validate();
             revision.specJson = json.writeValueAsString(replacement);
             revision.reviewJson = null; revision.puzzleReviewOverridden = false;
-            revision.scriptModel = draft.model(); revision.responseId = draft.responseId();
-            clearArtworkForPuzzle(directory(revisionId), index);
+            revision.scriptModel = model; revision.responseId = responseId;
+            for (var failure : failures) clearArtworkForPuzzle(directory(revisionId), failure.index());
             stage(revision, "SCRIPT_REVIEW");
         } catch (Exception ex) { failed(revision, ex); }
     }
@@ -390,17 +407,19 @@ class StudioService {
         save(revision);
     }
 
-    private void regenerateGroundingArtwork(UUID revisionId, int index, String groundingNotes) {
+    private void regenerateArtworkFailures(UUID revisionId, List<Remediation> failures) {
         StudioEpisode revision = find(revisionId);
         try {
             var spec = spec(revision);
             var production = settings(revision);
             Path dir = directory(revisionId);
-            clearArtworkDerivatives(dir, index);
-            ai.repairArtwork(spec.puzzles().get(index), dir, index, production.imageModel(),
-                stageInstructions(revision).forAction("artwork"), "Grounding rejected this image. Correct the visual evidence precisely: " + trimForPrompt(groundingNotes, 1200));
+            for (var failure : failures) {
+                clearArtworkDerivatives(dir, failure.index());
+                ai.repairArtwork(spec.puzzles().get(failure.index()), dir, failure.index(), production.imageModel(),
+                    stageInstructions(revision).forAction("artwork"), "A final visual review rejected this image. Correct the visual evidence precisely: " + trimForPrompt(failure.notes(), 1200));
+            }
             // The normal preparation path preserves every unaffected asset and re-runs only the
-            // cleared visual checks for this changed frame.
+            // cleared visual checks for the changed frames.
             artwork(revisionId);
         } catch (Exception ex) { failed(revision, ex); }
     }
@@ -767,27 +786,47 @@ class StudioService {
         }
         return true;
     }
-    private int remediationIndex(Integer requestedPuzzleNumber, int total) {
-        require(requestedPuzzleNumber != null && requestedPuzzleNumber >= 1 && requestedPuzzleNumber <= total,
-            "Choose a valid puzzle number from 1 to " + total);
-        return requestedPuzzleNumber - 1;
-    }
-    private StudioAi.Finding reviewFindingNeedingRemediation(StudioEpisode episode, EpisodeSpec spec, int index) {
+    private List<Remediation> reviewFailures(StudioEpisode episode, EpisodeSpec spec) {
         require(episode.reviewJson != null, "Run the puzzle review before regenerating a failed puzzle");
         var review = json.readValue(episode.reviewJson, StudioAi.Review.class);
         require(review.findings() != null && review.findings().size() == spec.puzzles().size(),
             "The saved review is incomplete; run it again before regenerating a puzzle");
-        var finding = review.findings().get(index);
-        require(finding != null && finding.puzzleNumber() == index + 1, "The saved review is incomplete; run it again before regenerating a puzzle");
-        require(!finding.fair() || !spec.puzzles().get(index).answerId().equals(finding.independentlySolvedAnswerId()),
-            "Only a puzzle that failed review can be regenerated from this control");
-        return finding;
+        var failures = new ArrayList<Remediation>();
+        for (int index = 0; index < review.findings().size(); index++) {
+            var finding = review.findings().get(index);
+            require(finding != null && finding.puzzleNumber() == index + 1, "The saved review is incomplete; run it again before regenerating a puzzle");
+            if (!finding.fair() || !spec.puzzles().get(index).answerId().equals(finding.independentlySolvedAnswerId()))
+                failures.add(new Remediation(index, finding.notes()));
+        }
+        require(!failures.isEmpty(), "The independent review did not reject any puzzles");
+        return List.copyOf(failures);
     }
-    private NarrationGrounding.Finding groundingFindingNeedingArtwork(StudioEpisode episode, EpisodeSpec spec, int index) {
+    private List<Remediation> groundingArtworkFailures(StudioEpisode episode, EpisodeSpec spec) {
         var grounding = narrationGrounding(episode, spec);
-        var finding = grounding.findings().get(index);
-        require(!finding.visualClueConfirmed(), "This puzzle's visual clue already passed grounding; no artwork repair is needed");
-        return finding;
+        var failures = new ArrayList<Remediation>();
+        for (int index = 0; index < grounding.findings().size(); index++) {
+            var finding = grounding.findings().get(index);
+            if (!finding.visualClueConfirmed()) failures.add(new Remediation(index, finding.notes()));
+        }
+        require(!failures.isEmpty(), "Grounding confirmed every visual clue; no artwork repair is needed");
+        return List.copyOf(failures);
+    }
+    private List<Remediation> artworkFailures(StudioEpisode episode, EpisodeSpec spec) {
+        Path dir = directory(episode.id);
+        var failures = new ArrayList<Remediation>();
+        for (int index = 0; index < spec.puzzles().size(); index++) {
+            try {
+                Path report = dir.resolve("visual-review-" + index + ".json");
+                Path hash = dir.resolve("visual-review-" + index + ".sha256");
+                require(Files.isRegularFile(report) && Files.isRegularFile(hash), "Complete the artwork visual checks before regenerating failed artwork");
+                require(Files.readString(hash).equals(digest(dir.resolve("question-" + index + ".png"))),
+                    "The artwork changed after visual review; run artwork preparation again first");
+                var review = json.readValue(Files.readString(report), StudioAi.VisualReview.class);
+                if (!review.acceptable()) failures.add(new Remediation(index, review.notes()));
+            } catch (Exception ex) { throw new IllegalStateException("Unable to read the artwork visual checks", ex); }
+        }
+        require(!failures.isEmpty(), "The artwork visual checks did not reject any puzzles");
+        return List.copyOf(failures);
     }
     private List<Integer> selectedPuzzlePositions(List<Integer> requestedNumbers, int total) {
         require(requestedNumbers != null && !requestedNumbers.isEmpty(), "Choose at least one puzzle to continue");

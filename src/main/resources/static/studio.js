@@ -160,16 +160,17 @@ function continueWithReviewWarnings(e) {
     finally { busy = false; draw(); }
   };
 }
-function regenerateReviewPuzzle(e, puzzleNumber) {
+function regenerateFailures(e, path, singular, count, nextStep) {
   return async () => {
     if (busy) return;
-    busy = true; draw(); notice(`Creating a new version and regenerating Puzzle ${puzzleNumber}…`);
+    const subject = `${count} failed ${count === 1 ? singular : singular + 's'}`;
+    busy = true; draw(); notice(`Creating a new version and regenerating ${subject}…`);
     try {
-      episode = await request('/' + e.id + '/regenerate-review-puzzle', 'POST', {puzzleNumber});
-      selected = episode.id; location.hash = selected; step = 0;
-      localStorage.setItem(`brain-booster-step-${episode.id}`, '0');
+      episode = await request('/' + e.id + path);
+      selected = episode.id; location.hash = selected; step = nextStep;
+      localStorage.setItem(`brain-booster-step-${episode.id}`, String(nextStep));
       if (isWorking(episode)) localStorage.setItem(runningKey(episode), String(Date.now()));
-      notice(`Puzzle ${puzzleNumber} is regenerating in a new version. The original episode is unchanged.`);
+      notice(`${subject} ${count === 1 ? 'is' : 'are'} regenerating in a new version. The original episode is unchanged.`);
     } catch (error) { notice(error.message); }
     finally { busy = false; draw(); }
   };
@@ -178,7 +179,7 @@ function reviewDecision(e) {
   if (!e.review || reviewGatePassed(e)) return null;
   const box = el('aside', null, 'review-decision');
   if (!reviewCanBeOverridden(e)) {
-    box.append(el('h3', 'Resolve the failed puzzle'), el('p', 'Use Regenerate puzzle on the failed finding below. It creates a new version and makes one manual text-generation request; your original episode remains unchanged.'));
+    box.append(el('h3', 'Resolve the failed puzzles'), el('p', 'Use the single batch action below. It creates a new version and replaces only the puzzles the reviewer rejected; your original episode remains unchanged.'));
     return box;
   }
   box.append(el('h3', 'Choose the next path'), el('p', 'The reviewer agrees with every answer, but flagged quality concerns. You can run the review again, or continue with these saved warnings. Continuing does not make an OpenAI call.'));
@@ -194,20 +195,6 @@ function continueWithGroundingWarnings(e) {
       step = firstOpenStep(episode);
       localStorage.setItem(`brain-booster-step-${episode.id}`, String(step));
       notice('Grounding warnings accepted. You can now generate voice when ready.');
-    } catch (error) { notice(error.message); }
-    finally { busy = false; draw(); }
-  };
-}
-function regenerateGroundingArtwork(e, puzzleNumber) {
-  return async () => {
-    if (busy) return;
-    busy = true; draw(); notice(`Creating a new version and regenerating artwork for Puzzle ${puzzleNumber}…`);
-    try {
-      episode = await request('/' + e.id + '/regenerate-grounding-artwork', 'POST', {puzzleNumber});
-      selected = episode.id; location.hash = selected; step = 2;
-      localStorage.setItem(`brain-booster-step-${episode.id}`, '2');
-      if (isWorking(episode)) localStorage.setItem(runningKey(episode), String(Date.now()));
-      notice(`Artwork for Puzzle ${puzzleNumber} is regenerating in a new version. The original episode is unchanged.`);
     } catch (error) { notice(error.message); }
     finally { busy = false; draw(); }
   };
@@ -228,7 +215,7 @@ function groundingDecision(e) {
   if (!e.narrationGrounding || groundingGatePassed(e)) return null;
   const box = el('aside', null, 'review-decision');
   if (!groundingCanBeOverridden(e)) {
-    box.append(el('h3', 'Resolve the failed item'), el('p', 'Use the focused action on the finding below. A visual mismatch can regenerate only that artwork; a wording issue can return to Narration.'));
+    box.append(el('h3', 'Resolve the failed items'), el('p', 'Use the batch artwork action below for visual mismatches. A wording issue can return to Narration.'));
     return box;
   }
   box.append(el('h3', 'Choose the next path'), el('p', 'The grounding editor found visual or wording concerns, but OPTION-only narration is intact. You can ground again, or consciously continue with these saved warnings. Continuing makes no OpenAI call.'));
@@ -340,15 +327,18 @@ function reviewOutput(e, pane) {
   if (!e.review) return emptyOutput(pane, 'The independent fairness review will appear here.');
   const pass = isReviewed(e); const overridden = !!e.puzzleReviewOverridden;
   pane.append(el('p', pass ? 'All puzzles passed the independent review.' : overridden ? 'You chose to continue with the saved review warnings.' : 'One or more puzzles need changes before artwork.', pass || overridden ? 'pass-note' : 'warning-note'));
+  const failures = e.review.findings?.filter(f => !f.fair || e.spec?.puzzles?.[f.puzzleNumber - 1]?.answerId !== f.independentlySolvedAnswerId) || [];
+  if (failures.length) {
+    const recovery = el('aside', null, 'review-decision');
+    recovery.append(el('h3', 'Regenerate every failed puzzle'), el('p', `This manually makes ${failures.length} text-generation ${failures.length === 1 ? 'request' : 'requests'}—one for each rejected puzzle—and opens a new version. Puzzles that passed are retained.`));
+    addButton(recovery, `Regenerate all ${failures.length} failed ${failures.length === 1 ? 'puzzle' : 'puzzles'}`, regenerateFailures(e, '/regenerate-failed-puzzles', 'puzzle', failures.length, 0), 'secondary', isWorking(e));
+    pane.append(recovery);
+  }
   e.review.findings?.forEach(f => {
     const expected = e.spec?.puzzles?.[f.puzzleNumber - 1]?.answerId;
     const failed = !f.fair || expected !== f.independentlySolvedAnswerId;
     const card = el('article', null, 'finding'); card.append(el('h4', `Puzzle ${f.puzzleNumber} — ${failed ? 'Needs changes' : 'Passed'}`));
     facts(card, {IndependentlySolvedAnswerId:f.independentlySolvedAnswerId, Fair:f.fair, Notes:f.notes || f.reasoning || ''});
-    if (failed) {
-      card.append(el('p', 'This manually uses one text-generation request and opens a new episode version. All other saved work is retained where valid.', 'visual-note'));
-      addButton(card, `Regenerate puzzle ${f.puzzleNumber}`, regenerateReviewPuzzle(e, f.puzzleNumber), 'secondary', isWorking(e));
-    }
     pane.append(card);
   });
 }
@@ -360,6 +350,13 @@ function artworkOutput(e, pane) {
     const reveal = el('figure', null, 'art-card'); const revealImage = document.createElement('img'); revealImage.src = media(e, `reveal-${index}.png`); revealImage.alt = `Puzzle ${index + 1} answer artwork with highlighted clue`; revealImage.loading = 'lazy'; reveal.append(revealImage, el('figcaption', `Puzzle ${index + 1} · answer highlight`)); grid.append(reveal);
   }); pane.append(grid);
   pane.append(el('p', 'The answer image automatically locates and circles the decisive clue during its animated reveal.', 'visual-note'));
+  const failedArtwork = (e.visualReviews || []).filter(review => !review.acceptable);
+  if (failedArtwork.length) {
+    const recovery = el('aside', null, 'review-decision');
+    recovery.append(el('h3', 'Regenerate every failed artwork'), el('p', `This manually makes ${failedArtwork.length} image-generation ${failedArtwork.length === 1 ? 'request' : 'requests'} and opens a new version. Artwork that passed is retained.`));
+    addButton(recovery, `Regenerate all ${failedArtwork.length} failed ${failedArtwork.length === 1 ? 'image' : 'images'}`, regenerateFailures(e, '/regenerate-failed-artwork', 'artwork item', failedArtwork.length, 2), 'secondary', isWorking(e));
+    pane.append(recovery);
+  }
   e.visualReviews?.forEach((review, index) => { const note = el('p', `Visual check ${index + 1}: ${review.notes || review.summary || 'completed'}`, 'visual-note'); pane.append(note); });
   const selection = artworkSelection(e); if (selection) pane.append(selection);
 }
@@ -378,13 +375,18 @@ function groundingOutput(e, pane) {
   pane.append(el('p', pass ? 'Every narration clue matches the completed artwork.' : overridden ? 'You chose to continue with the saved grounding warnings.' : 'Grounding found an issue that needs review.', pass || overridden ? 'pass-note' : 'warning-note'));
   const narrationFixAvailable = e.narrationGrounding.findings?.some(f => f.visualClueConfirmed && f.optionOnly && !f.narrationMatchesFrame)
     && e.narrationGrounding.findings.every(f => f.visualClueConfirmed && f.optionOnly);
+  const groundingArtworkFailures = e.narrationGrounding.findings?.filter(f => !f.visualClueConfirmed) || [];
+  if (groundingArtworkFailures.length) {
+    const recovery = el('aside', null, 'review-decision');
+    recovery.append(el('h3', 'Regenerate every failed artwork'), el('p', `This manually makes ${groundingArtworkFailures.length} image-generation ${groundingArtworkFailures.length === 1 ? 'request' : 'requests'} and opens a new version. Artwork that passed is retained.`));
+    addButton(recovery, `Regenerate all ${groundingArtworkFailures.length} failed ${groundingArtworkFailures.length === 1 ? 'image' : 'images'}`, regenerateFailures(e, '/regenerate-grounding-artwork', 'artwork item', groundingArtworkFailures.length, 2), 'secondary', isWorking(e));
+    pane.append(recovery);
+  }
   let narrationFixShown = false;
   e.narrationGrounding.findings?.forEach(f => {
     const card = el('article', null, 'finding'); card.append(el('h4', `Puzzle ${f.puzzleNumber}`)); facts(card, {VisualClueConfirmed:f.visualClueConfirmed, NarrationMatchesFrame:f.narrationMatchesFrame, OptionOnly:f.optionOnly, Notes:f.notes});
-    if (!f.visualClueConfirmed) {
-      card.append(el('p', 'This manually uses one image-generation request and opens a new episode version. Only this puzzle’s artwork is replaced.', 'visual-note'));
-      addButton(card, `Regenerate artwork for puzzle ${f.puzzleNumber}`, regenerateGroundingArtwork(e, f.puzzleNumber), 'secondary', isWorking(e));
-    } else if (!f.optionOnly) {
+    if (!f.visualClueConfirmed) card.append(el('p', 'Included in the batch artwork recovery above.', 'visual-note'));
+    else if (!f.optionOnly) {
       card.append(el('p', 'This is a narration wording issue. Return to Narration to generate a fresh episode script before grounding again.', 'visual-note'));
       addButton(card, 'Go to narration', () => setStep(3), 'secondary', isWorking(e));
     } else if (narrationFixAvailable && !narrationFixShown && !f.narrationMatchesFrame) {
