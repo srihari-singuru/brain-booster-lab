@@ -189,6 +189,14 @@ class StudioAi {
             long noun phrases, and clever wording that changes the meaning. The puzzle can be medium
             difficulty because of the picture clue, never because the English is difficult.
             thinkSeconds: 8–15; use 8 for every visual puzzle.
+
+            PRE-SUBMISSION ACCEPTANCE CHECK — silently perform this before returning the structured object.
+            For every puzzle, independently trace the picture plan as a new family viewer: exactly one supplied
+            OPTION must be provably correct from one large, visible physical clue; every other OPTION must have
+            a clear ordinary counterpart; no unstated fact, expression, stereotype, tiny search, arithmetic, or
+            advanced English may be needed. Then compare the collection: no two puzzles may share a setting,
+            core action, clue mechanism, question shape, or reveal logic. If any check fails, redesign that
+            puzzle before returning it. Return only puzzles you expect an adversarial reviewer to pass.
             Original creative brief follows:
             """.formatted(puzzleCount, recovery ? "750" : (puzzleCount >= 4 ? "900" : "1200")) + brief + recentTitleSuffix(recentPuzzleTitles)
             + (recovery ? "\nRECOVERY MODE: A prior response could not be decoded. Return the complete schema only. Keep every field concise, especially sceneDescription; do not omit any puzzle or use markdown.\n" : "")
@@ -343,7 +351,15 @@ class StudioAi {
             watermarks, arrows, rings or answer highlights. No plastic 3D or preschool clip-art.
             The following scene plan is authoritative, especially its stated physical evidence and candidate order:
             """ + puzzle.sceneDescription();
-        prompt += "\nFinal lettering constraint: do NOT draw OPTION badges or any text, even if the scene brief mentions them. The application alone adds those labels."
+        prompt += """
+
+            PRE-SUBMISSION ACCEPTANCE CHECK — before delivering the image, verify that every specified candidate
+            is present once, left-to-right, fully visible, and visually comparable; the correct clue is large,
+            sharp, physically coherent, and visible at phone size; and the required quiet top space remains clear
+            in every candidate lane. The image must pass raw art conformance and a later blind visual solve without
+            relying on the written scene plan. If any requirement conflicts, prioritize the exact scene plan and
+            visual proof. Do not add text, OPTION badges, arrows, circles, watermarks, logos, or answer hints.
+            """
             + operatorSuffix(operatorDirection);
         Path artwork = directory.resolve("art-" + index + ".png");
         if (Files.exists(artwork) && !replaceExisting) return; // Saved successful output is reused on regular retries.

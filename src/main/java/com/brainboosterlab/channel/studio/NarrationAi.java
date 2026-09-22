@@ -112,6 +112,14 @@ class NarrationAi {
             - The reveal must begin with the correct OPTION letter, then unpack the visible proof with enough vivid, story-like detail to reward a careful guess.
             - No headings, timestamps, stage directions, sound effects, markdown, or text intended to appear on art.
 
+            PRE-SUBMISSION ACCEPTANCE CHECK — silently check every puzzle beat before returning it. The lead-in
+            and timer must not name or telegraph the answer, an OPTION letter, a choice name, or the decisive clue.
+            The reveal must use only the correct OPTION letter and must state only the exact proof already supplied
+            in the puzzle specification. Keep the required word ranges, exactly-eight-seconds cue, simple spoken
+            English, family-safe warmth, and a similar spoken density across every puzzle. If a line fails one of
+            these checks, rewrite it before returning the structured object. Return narration you expect both the
+            independent script editor and final frame-grounding editor to accept without correction.
+
             Return the required structured object. Episode specification:
             """ + json.writeValueAsString(spec) + operatorSuffix(operatorDirection);
         var response = client.responses().create(ResponseCreateParams.builder().model(activeModel).input(prompt)
@@ -190,7 +198,9 @@ class NarrationAi {
 
             If any image does not prove its clue, set that finding’s visualClueConfirmed and narrationMatchesFrame
             false, explain the mismatch, and keep the narration conservative. Each notes field must be one or two short sentences, under 300 characters. Return the complete structured
-            NarrationGrounding object with one finding per image in order.
+            NarrationGrounding object with one finding per image in order. Before returning, silently verify that
+            the corrected narration names only OPTION letters, makes no claim beyond visible pixels, retains the
+            fixed timing and simple language, and is safe to send directly to speech when every finding passes.
 
             Puzzle specification: """ + json.writeValueAsString(spec) + "\nProposed narration: " + json.writeValueAsString(narration) + operatorSuffix(operatorDirection);
         var content = new java.util.ArrayList<ResponseInputContent>();
