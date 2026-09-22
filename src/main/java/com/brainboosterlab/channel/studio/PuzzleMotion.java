@@ -5,7 +5,7 @@ import java.awt.image.BufferedImage;
 
 final class PuzzleMotion {
     static final int FPS = 30, REVEAL_TICKS = 36, TRANSITION_TICKS = 60;
-    /** A two-second colour interlude with a short, legible all-caps cue and subtle channel calls to action. */
+    /** A two-second colour interlude with a short, legible cue and official local icon assets. */
     static BufferedImage transition(BufferedImage before, BufferedImage after, double progress) {
         if (progress <= 0) return before;
         if (progress >= 1) return after;
@@ -26,43 +26,30 @@ final class PuzzleMotion {
                 g.fillOval(x, y, 10, 10);
             }
             String title = "NEXT PUZZLE";
-            g.setFont(new Font("Arial Black", Font.BOLD, 72));
+            g.setFont(VideoTypography.display(72));
             int width = g.getFontMetrics().stringWidth(title);
             int x = (1920 - width) / 2, y = 575;
             g.setColor(new Color(12, 24, 66, 220));
             for (int dx = -5; dx <= 5; dx += 5) for (int dy = -5; dy <= 5; dy += 5) g.drawString(title, x + dx, y + dy);
             g.setColor(Color.WHITE); g.drawString(title, x, y);
-            drawLike(g, 565, 675, eased);
-            drawShare(g, 865, 675, eased);
-            drawSubscribe(g, 1165, 675, eased);
+            drawAction(g, 545, 675, 230, "LIKE", eased, Action.LIKE);
+            drawAction(g, 835, 675, 250, "SHARE", eased, Action.SHARE);
+            drawAction(g, 1145, 675, 300, "SUBSCRIBE", eased, Action.SUBSCRIBE);
         } finally { g.dispose(); }
         return image;
     }
 
-    private static void pill(Graphics2D g, int x, int y, int width, String label, double progress) {
+    private enum Action { LIKE, SHARE, SUBSCRIBE }
+
+    private static void drawAction(Graphics2D g, int x, int y, int width, String label, double progress, Action action) {
         int lift = (int) Math.round((1 - progress) * 28);
-        g.setColor(new Color(8, 21, 67, 180)); g.fillRoundRect(x, y + lift, width, 70, 35, 35);
-        g.setColor(new Color(255, 255, 255, 225)); g.setStroke(new BasicStroke(2)); g.drawRoundRect(x, y + lift, width, 70, 35, 35);
-        g.setFont(new Font("Arial", Font.BOLD, 26)); g.setColor(Color.WHITE); g.drawString(label, x + 74, y + lift + 45);
-    }
-
-    private static void drawLike(Graphics2D g, int x, int y, double progress) {
-        pill(g, x, y, 220, "LIKE", progress);
-        int lift = (int) Math.round((1 - progress) * 28); g.setColor(new Color(255, 218, 48));
-        g.fillRoundRect(x + 28, y + lift + 29, 24, 24, 8, 8); g.fillRoundRect(x + 45, y + lift + 18, 13, 35, 7, 7);
-        g.fillRoundRect(x + 53, y + lift + 21, 15, 24, 7, 7);
-    }
-
-    private static void drawShare(Graphics2D g, int x, int y, double progress) {
-        pill(g, x, y, 230, "SHARE", progress);
-        int lift = (int) Math.round((1 - progress) * 28); g.setColor(new Color(70, 234, 220)); g.setStroke(new BasicStroke(4));
-        g.drawLine(x + 35, y + lift + 42, x + 54, y + lift + 27); g.drawLine(x + 35, y + lift + 42, x + 56, y + lift + 52);
-        g.fillOval(x + 26, y + lift + 33, 18, 18); g.fillOval(x + 47, y + lift + 18, 18, 18); g.fillOval(x + 49, y + lift + 43, 18, 18);
-    }
-
-    private static void drawSubscribe(Graphics2D g, int x, int y, double progress) {
-        pill(g, x, y, 270, "SUBSCRIBE", progress);
-        int lift = (int) Math.round((1 - progress) * 28); g.setColor(new Color(255, 80, 86)); g.fillRoundRect(x + 25, y + lift + 20, 38, 32, 9, 9);
-        g.setColor(Color.WHITE); Polygon play = new Polygon(new int[]{x + 40, x + 40, x + 53}, new int[]{y + lift + 27, y + lift + 45, y + lift + 36}, 3); g.fillPolygon(play);
+        g.setColor(new Color(8, 21, 67, 180)); g.fillRoundRect(x + 3, y + lift + 5, width, 70, 35, 35);
+        g.setColor(new Color(255, 255, 255, 235)); g.fillRoundRect(x, y + lift, width, 70, 35, 35);
+        switch (action) {
+            case LIKE -> VideoIcons.like(g, x + 25, y + lift + 19, 32);
+            case SHARE -> VideoIcons.share(g, x + 25, y + lift + 19, 32);
+            case SUBSCRIBE -> VideoIcons.subscribe(g, x + 25, y + lift + 19, 32);
+        }
+        g.setFont(VideoTypography.display(25)); g.setColor(new Color(12, 24, 66)); g.drawString(label, x + 78, y + lift + 46);
     }
 }

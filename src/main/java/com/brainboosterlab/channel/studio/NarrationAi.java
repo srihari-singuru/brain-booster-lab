@@ -84,7 +84,7 @@ class NarrationAi {
             specification. This is voice-over, not on-screen copy. Make each puzzle feel like a compact, playful
             mystery in one polished show: a vivid situation, building curiosity, a clean invitation to solve, then
             a satisfying reveal. Sound bright and intelligent for older children and parents while remaining clear
-            for younger children. Vary the storytelling rhythm and wording; never sound babyish, classroom-like, or generic.
+            for younger children. Keep sentence length and word counts remarkably even between puzzles so one steady voice speed feels natural across the full episode. Vary the storytelling rhythm and wording; never sound babyish, classroom-like, or generic.
 
             Use ONLY facts, choices, answer and explanation in the specification. Never invent visual evidence,
             character traits, extra suspects, danger, or a second puzzle rule. Do not use stock pressure such as
@@ -100,11 +100,11 @@ class NarrationAi {
 
             Structure rules:
             - episodeOpening: one fresh welcome, 4–28 words. It will be used in a future opening, not today’s video.
-            - for each puzzle, questionLeadIn: 20–25 words, designed for exactly nine seconds at the chosen voice speed. Set a mini-story and ask
+            - for each puzzle, questionLeadIn: 20–25 words, designed for about nine seconds at the chosen voice speed. Set a mini-story and ask
               the on-screen question naturally, but DO NOT name, label, or hint at the answer or clue. Build a little
               anticipation without repeating the question word-for-word.
             - timerCue: 5–7 words. It must invite viewers to take exactly EIGHT seconds, and it plays immediately before the fixed eight-second silent timer begins. Do not count aloud.
-            - revealExplanation: 18–23 words, designed for exactly eight seconds at the chosen voice speed. State the correct choice and the exact
+            - revealExplanation: 18–23 words, designed for about eight seconds at the chosen voice speed. State the correct choice and the exact
               visible clue/rule that proves it in a lively, natural way that rewards the viewer’s reasoning.
             - episodeClosing: one fresh 4–28-word sign-off for a future ending.
             - Never use a character name, choice label, or descriptive choice name anywhere in narration. Refer to a choice only as its supplied OPTION letter (A through E).

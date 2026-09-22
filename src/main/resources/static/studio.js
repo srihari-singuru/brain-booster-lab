@@ -14,7 +14,7 @@ const REVIEW_ITEMS = [
   ['voice', 'The voice pace and energy feel right.'],
   ['preview', 'I watched the preview video from start to finish.']
 ];
-let defaultSettings = {channelName:'BRAIN BOOSTER LAB', puzzleCount:3, textModel:'gpt-4o-mini', imageModel:'gpt-image-1', narrationModel:'gpt-4o-mini', speechModel:'gpt-4o-mini-tts', speechVoice:'cedar', speechSpeed:1};
+let defaultSettings = {channelName:'BRAIN BOOSTER LAB', puzzleCount:3, textModel:'gpt-4o-mini', imageModel:'gpt-image-1', narrationModel:'gpt-4o-mini', speechModel:'gpt-4o-mini-tts', speechVoice:'cedar', speechSpeed:1.05};
 let modelCatalog = {text:['gpt-6-astra','gpt-5.6-sol','gpt-5.6-terra'],image:['gpt-image-2'],speech:['gpt-4o-mini-tts'],voices:['cedar','marin','alloy','ash','ballad','coral','echo','fable','nova','onyx','sage','shimmer','verse'],live:false};
 const by = id => document.querySelector('#' + id);
 const el = (tag, text, className) => { const node = document.createElement(tag); if (text != null) node.textContent = text; if (className) node.className = className; return node; };
@@ -130,7 +130,7 @@ function waitingMessage(e, index) {
 }
 function instructionKey(action) { return ({generate:'generate',review:'review',artwork:'artwork',narration:'narration','ground-narration':'grounding',speech:'speech'})[action]; }
 function basePromptLabel(action) {
-  return ({generate:'Create picture-first family mini-mysteries from the creative prompt and the selected puzzle count.',review:'Independently check fairness, age fit, and whether every answer has one clear proof.',artwork:'Create a pure, unlabelled 16:9 scene with candidates in clear left-to-right lanes and one visible proof. The application adds option cards below the image.',narration:'Write an energetic but natural story-led voice-over grounded in the reviewed puzzles.', 'ground-narration':'Compare the narration against the finished question frames and correct only what the image proves.',speech:'Perform the approved narration with the selected OpenAI voice and speed.'})[action] || '';
+  return ({generate:'Create picture-first family mini-mysteries from the creative prompt and the selected puzzle count.',review:'Independently check fairness, age fit, and whether every answer has one clear proof.',artwork:'Create a pure, unlabelled 16:9 scene with candidates in clear left-to-right lanes and clean space above each one. The application places one OPTION letter near each subject inside the picture.',narration:'Write an energetic but natural story-led voice-over grounded in the reviewed puzzles.', 'ground-narration':'Compare the narration against the finished question frames and correct only what the image proves.',speech:'Perform the approved narration with the selected OpenAI voice and speed.'})[action] || '';
 }
 function stageDirection(e, action) {
   const key = instructionKey(action); if (!key) return null;

@@ -11,17 +11,9 @@ final class KidsFrameRenderer {
     private static final Color YELLOW = new Color(255, 222, 39);
     private static final Color OUTLINE = new Color(15, 23, 35);
     private static final Color CORRECT = new Color(113, 244, 153);
-    private static final String DISPLAY_FONT = "Arial Black";
-    private static final String BADGE_FONT = "Arial Rounded MT Bold";
-    /*
-     * The illustration is deliberately a complete 16:9 window.  Option controls live
-     * below it, not on top of faces, props, shadows, or the decisive clue.  This is
-     * more than a visual preference: it gives the image checker the same unobscured
-     * evidence a viewer sees.
-     */
-    static final Rectangle ART_STAGE = new Rectangle(320, 152, 1280, 720);
-    private static final Rectangle ART_PANEL = new Rectangle(300, 136, 1320, 752);
-    private static final Rectangle OPTION_STRIP = new Rectangle(220, 906, 1480, 126);
+    /* A large, edge-to-edge picture window makes the artwork the star of every frame. */
+    static final Rectangle ART_STAGE = new Rectangle(160, 145, 1600, 900);
+    private static final Rectangle ART_PANEL = new Rectangle(144, 129, 1632, 932);
 
     static Rectangle artBox(int width, int height) {
         // Keep the complete scene visible in its 16:9 stage rather than cropping puzzle evidence.
@@ -35,10 +27,10 @@ final class KidsFrameRenderer {
     }
 
     static Rectangle badgeBox(int index, int count, Rectangle imageBox) {
+        // Artwork generation reserves a clean strip above each left-to-right subject.
+        // A single letter marker is readable on a phone without hiding the clue below.
         int centerX = imageBox.x + (2 * index + 1) * imageBox.width / (2 * count);
-        int gap = 16;
-        int width = Math.min(270, (OPTION_STRIP.width - gap * (count - 1)) / count);
-        return new Rectangle(centerX - width / 2, OPTION_STRIP.y, width, OPTION_STRIP.height);
+        return new Rectangle(centerX - 50, imageBox.y + 52, 100, 100);
     }
 
     static BufferedImage frame(EpisodeSpec.Puzzle p, BufferedImage art, int index, String phase, int countdown, boolean draft) {
@@ -71,31 +63,24 @@ final class KidsFrameRenderer {
             g.setColor(new Color(12, 32, 66)); g.setStroke(new BasicStroke(4));
             g.drawRoundRect(ART_PANEL.x, ART_PANEL.y, ART_PANEL.width, ART_PANEL.height, 30, 30);
 
-            // Keep a dedicated safe area on the right for the countdown badge so
-            // long, all-caps questions never collide with the timer.
             headlineCentered(g, reveal ? "ANSWER " + p.answerId() + "!" : p.question().toUpperCase(Locale.ROOT),
-                new Rectangle(220, 18, 1380, 118), 94, 46, reveal ? YELLOW : Color.WHITE, 8);
+                new Rectangle(205, 18, 1510, 112), 92, 42, reveal ? YELLOW : Color.WHITE, 8);
             drawPuzzleNumber(g, index + 1);
 
             for (int i = 0; i < p.choices().size(); i++) {
                 var choice = p.choices().get(i);
                 boolean correct = reveal && choice.id().equals(p.answerId());
                 var b = badgeBox(i, p.choices().size(), fit);
-                g.setColor(new Color(6, 24, 50, 95)); g.fillRoundRect(b.x + 4, b.y + 7, b.width, b.height, 30, 30);
+                g.setColor(new Color(6, 24, 50, 132)); g.fillOval(b.x + 5, b.y + 7, b.width, b.height);
                 if (correct) {
                     double pulse = revealTime < 1.2 ? 8 * Math.sin(Math.PI * Math.min(1, revealTime / 1.2)) : 0;
                     g.setColor(CORRECT); g.setStroke(new BasicStroke(6));
-                    g.drawRoundRect((int)(b.x - 8 - pulse), (int)(b.y - 8 - pulse),
-                        (int)(b.width + 16 + 2 * pulse), (int)(b.height + 16 + 2 * pulse), 36, 36);
+                    g.drawOval((int)(b.x - 8 - pulse), (int)(b.y - 8 - pulse),
+                        (int)(b.width + 16 + 2 * pulse), (int)(b.height + 16 + 2 * pulse));
                 }
-                g.setColor(Color.WHITE); g.fillRoundRect(b.x, b.y, b.width, b.height, 26, 26);
-                g.setColor(OUTLINE); g.setStroke(new BasicStroke(4)); g.drawRoundRect(b.x, b.y, b.width, b.height, 26, 26);
-                var letter = new Rectangle(b.x + 12, b.y + 16, 78, 92);
-                g.setColor(correct ? CORRECT : YELLOW); g.fillRoundRect(letter.x, letter.y, letter.width, letter.height, 20, 20);
-                g.setColor(OUTLINE); g.drawRoundRect(letter.x, letter.y, letter.width, letter.height, 20, 20);
-                centered(g, choice.id(), letter, 58, OUTLINE);
-                headlineCentered(g, "OPTION " + choice.id(), new Rectangle(b.x + 102, b.y + 38, b.width - 114, 48), 35, 24,
-                    correct ? new Color(26, 125, 73) : OUTLINE, 2);
+                g.setColor(correct ? CORRECT : YELLOW); g.fillOval(b.x, b.y, b.width, b.height);
+                g.setColor(OUTLINE); g.setStroke(new BasicStroke(5)); g.drawOval(b.x, b.y, b.width, b.height);
+                centered(g, choice.id(), b, 62, OUTLINE);
             }
             if (reveal && overlay != null) {
                 int answerIndex = 0;
@@ -104,23 +89,18 @@ final class KidsFrameRenderer {
                     badgeBox(answerIndex, p.choices().size(), fit));
             }
             if (countdown > 0 && !reveal) {
-                var timer = new Rectangle(1644, 25, 92, 92);
+                var timer = new Rectangle(1768, 25, 102, 102);
                 g.setColor(OUTLINE); g.fillOval(timer.x, timer.y, timer.width, timer.height);
                 g.setColor(Color.WHITE); g.setStroke(new BasicStroke(4)); g.drawOval(timer.x, timer.y, timer.width, timer.height);
                 centered(g, Integer.toString(countdown), timer, 53, YELLOW);
                 g.setColor(YELLOW); g.setStroke(new BasicStroke(5, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-                g.drawArc(timer.x - 7, timer.y - 7, 106, 106, 90,
+                g.drawArc(timer.x - 7, timer.y - 7, 116, 116, 90,
                     -(int)(360.0 * countdown / VISUAL_QUESTION_SECONDS));
             }
-            int dots = Math.min(puzzleCount, 8), dotStart = 1748 - dots * 25;
-            for (int dot = 0; dot < dots; dot++) {
-                g.setColor(OUTLINE); g.fillOval(dotStart + dot * 25, 122, 18, 18);
-                g.setColor(dot == index ? YELLOW : Color.WHITE); g.fillOval(dotStart + 4 + dot * 25, 126, 10, 10);
-            }
-            drawSideBrand(g, 66, 500, true, channelName);
-            drawSideBrand(g, 1854, 500, false, channelName);
-            drawPlayBadge(g, 31, 696);
-            drawPlayBadge(g, 1819, 696);
+            drawSideBrand(g, 66, 540, true, channelName);
+            drawSideBrand(g, 1854, 540, false, channelName);
+            drawPlayBadge(g, 32, 728);
+            drawPlayBadge(g, 1818, 728);
             if (draft) headline(g, "DRAFT", new Rectangle(30, 1020, 100, 28), 22, 18, Color.WHITE, 3);
         } finally { g.dispose(); }
         return canvas;
@@ -164,7 +144,7 @@ final class KidsFrameRenderer {
     private record BoardPalette(Color left, Color right) {}
 
     private static void drawPuzzleNumber(Graphics2D g, int number) {
-        int cx = 105, cy = 76, outer = 67, inner = 51, spikes = 14;
+        int cx = 98, cy = 74, outer = 64, inner = 49, spikes = 14;
         int[] xs = new int[spikes * 2], ys = new int[spikes * 2];
         for (int i = 0; i < xs.length; i++) {
             double angle = -Math.PI / 2 + i * Math.PI / spikes;
@@ -185,7 +165,7 @@ final class KidsFrameRenderer {
         try {
             g.rotate(left ? -Math.PI / 2 : Math.PI / 2, x, centerY);
             String name = channelName.toUpperCase(Locale.ROOT);
-            g.setFont(new Font(DISPLAY_FONT, Font.BOLD, 30));
+            g.setFont(VideoTypography.display(30));
             int width = g.getFontMetrics().stringWidth(name);
             int baseline = centerY + (g.getFontMetrics().getAscent() - g.getFontMetrics().getDescent()) / 2;
             g.setColor(new Color(10, 47, 94, 120)); g.drawString(name, x - width / 2 + 3, baseline + 3);
@@ -193,11 +173,11 @@ final class KidsFrameRenderer {
         } finally { g.setTransform(transform); }
     }
 
-    /** A generic play mark for our own brand board, not a YouTube affiliation badge. */
+    /** A locally bundled, official Google Material subscription icon—not a YouTube affiliation badge. */
     private static void drawPlayBadge(Graphics2D g, int x, int y) {
-        g.setColor(new Color(9, 39, 79, 80)); g.fillRoundRect(x + 3, y + 5, 70, 54, 16, 16);
-        g.setColor(new Color(255, 255, 255, 235)); g.fillRoundRect(x, y, 70, 54, 16, 16);
-        g.setColor(new Color(214, 67, 63)); g.fillPolygon(new int[]{x + 27, x + 27, x + 49}, new int[]{y + 13, y + 41, y + 27}, 3);
+        g.setColor(new Color(9, 39, 79, 80)); g.fillOval(x + 3, y + 5, 60, 60);
+        g.setColor(new Color(255, 255, 255, 235)); g.fillOval(x, y, 60, 60);
+        VideoIcons.subscribe(g, x + 14, y + 14, 32);
     }
 
     /** Never let the animated ring be clipped at the lower edge of a full-width scene stage. */
@@ -230,7 +210,7 @@ final class KidsFrameRenderer {
     /** Fit glyphs by choosing a font size, never by distorting their aspect ratio. */
     static void headline(Graphics2D g, String text, Rectangle box, int maximum, int minimum, Color fill, float stroke) {
         for (int size = maximum; size >= minimum; size--) {
-            var font = new Font(DISPLAY_FONT, Font.BOLD, size);
+            var font = VideoTypography.display(size);
             Shape glyphs = font.createGlyphVector(g.getFontRenderContext(), text).getOutline();
             var bounds = glyphs.getBounds2D();
             if (bounds.getWidth() + stroke > box.width || bounds.getHeight() + stroke > box.height) continue;
@@ -245,7 +225,7 @@ final class KidsFrameRenderer {
 
     static void headlineCentered(Graphics2D g, String text, Rectangle box, int maximum, int minimum, Color fill, float stroke) {
         for (int size = maximum; size >= minimum; size--) {
-            var font = new Font(DISPLAY_FONT, Font.BOLD, size);
+            var font = VideoTypography.display(size);
             Shape glyphs = font.createGlyphVector(g.getFontRenderContext(), text).getOutline();
             var bounds = glyphs.getBounds2D();
             if (bounds.getWidth() + stroke > box.width || bounds.getHeight() + stroke > box.height) continue;
@@ -260,7 +240,7 @@ final class KidsFrameRenderer {
     }
 
     private static void centered(Graphics2D g, String text, Rectangle box, int size, Color color) {
-        var font = new Font(BADGE_FONT, Font.BOLD, size);
+        var font = VideoTypography.display(size);
         var glyphs = font.createGlyphVector(g.getFontRenderContext(), text).getOutline();
         var bounds = glyphs.getBounds2D();
         g.setColor(color);

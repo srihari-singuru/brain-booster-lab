@@ -328,7 +328,9 @@ class StudioAi {
             vibrant and intelligent, never preschool, babyish, gloomy, generic, or like stock clip-art.
             This is a pure, unlabelled scene placed inside a separate application frame. Exactly the three-to-five
             candidate subjects specified in the scene plan must appear left-to-right in matching OPTION order.
-            Treat each candidate as an equal-width lane with clear space between lanes; no other candidate-like
+            Treat each candidate as an equal-width lane with clear space between lanes. Leave the top 12 percent of
+            every candidate lane visually quiet—sky, wall, or background only—so the application can place one small
+            OPTION letter above that subject without covering a face or a clue. No other candidate-like
             people, mannequins, portraits, or background figures that could be mistaken for an option. Show all
             full bodies and any floor/shadow/reflection evidence completely inside the canvas. The important proof
             must be large, sharp, physically coherent, and visible at phone size—not hidden, covered, cropped,

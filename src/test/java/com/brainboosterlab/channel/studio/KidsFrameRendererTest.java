@@ -15,24 +15,24 @@ class KidsFrameRendererTest {
     @Test void acceptsThreeEasyVisualPuzzles() {
         PilotFixtures.kids().validate();
         var spec=new EpisodeSpec("Little mysteries",List.of(puzzle(),puzzle(),puzzle()));spec.validate();
-        assertThat(StudioRenderer.layoutVersion(spec)).isEqualTo("kids-thumbnail-9");
+        assertThat(StudioRenderer.layoutVersion(spec)).isEqualTo("kids-thumbnail-10");
         assertThat(StudioRenderer.layoutVersion(PilotFixtures.sample())).isEqualTo("reasoning-2");
     }
     @Test void fullBleedArtworkKeepsSideEdgesAndFloorEvidenceVisible() {
         var source=new BufferedImage(1536,864,BufferedImage.TYPE_INT_RGB);
         var g=source.createGraphics();g.setColor(Color.MAGENTA);g.fillRect(0,0,1536,864);g.dispose();
         var frame=KidsFrameRenderer.frame(puzzle(),source,0,"question",12,true);
-        assertThat(KidsFrameRenderer.artBox(1536,864)).isEqualTo(new Rectangle(320,152,1280,720));
+        assertThat(KidsFrameRenderer.artBox(1536,864)).isEqualTo(new Rectangle(160,145,1600,900));
         var fit=ImageLayout.contain(1536,864,KidsFrameRenderer.artBox(1536,864));
-        assertThat(fit).isEqualTo(new Rectangle(320,152,1280,720));
+        assertThat(fit).isEqualTo(new Rectangle(160,145,1600,900));
         assertThat(frame.getRGB(fit.x+200,fit.y+200)).isEqualTo(Color.MAGENTA.getRGB());
         assertThat(frame.getRGB(0,700)).isNotEqualTo(Color.MAGENTA.getRGB());
         assertThat(frame.getRGB(1919,700)).isNotEqualTo(Color.MAGENTA.getRGB());
         assertThat(frame.getRGB(960,840)).isEqualTo(Color.MAGENTA.getRGB());
         for(int i=0;i<3;i++) {
             var badge=KidsFrameRenderer.badgeBox(i,3,fit);
-            assertThat(badge.y).isGreaterThan(fit.y+fit.height);
-            assertThat(frame.getRGB(badge.x+15,badge.y+58)).isNotEqualTo(Color.MAGENTA.getRGB());
+            assertThat(fit.contains(badge)).isTrue();
+            assertThat(frame.getRGB(badge.x+50,badge.y+50)).isNotEqualTo(Color.MAGENTA.getRGB());
         }
     }
     @Test void shortRevealFitsAndKeepsOriginalPixelsUnmodified() {

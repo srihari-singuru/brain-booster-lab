@@ -14,10 +14,10 @@ import org.springframework.stereotype.Component;
 class StudioRenderer {
     static final String LAYOUT_VERSION = "reasoning-2";
     static String layoutVersion(EpisodeSpec spec) {
-        return spec.puzzles().stream().anyMatch(p -> "visual".equals(p.kind())) ? "kids-thumbnail-9" : LAYOUT_VERSION;
+        return spec.puzzles().stream().anyMatch(p -> "visual".equals(p.kind())) ? "kids-thumbnail-10" : LAYOUT_VERSION;
     }
     static final int WIDTH = 1920, HEIGHT = 1080;
-    /** Temporary speech slots; narration later replaces these exact durations. */
+    /** The eight-second thinking period is exact; spoken phases use their measured natural duration. */
     static final int VISUAL_SETUP_SECONDS = 9;
     static final int VISUAL_QUESTION_SECONDS = 8;
     /** A short natural breath plus the timer cue totals exactly three seconds at the default speed. */
@@ -212,9 +212,9 @@ class StudioRenderer {
     }
 
     private void writeTicking(Path target, Path dir) throws Exception {
-        // Ten evenly spaced, gentle clock ticks: one at the start of each measured second.
+        // One gentle tick for every second of the exact on-screen thinking period.
         runFfmpeg(List.of(ffmpeg, "-y", "-v", "warning", "-f", "lavfi", "-i",
-            "aevalsrc=if(lt(mod(t\\,1)\\,.055)\\,.13*sin(2*PI*1200*t)\\,0):s=24000:d=10",
+            "aevalsrc=if(lt(mod(t\\,1)\\,.055)\\,.13*sin(2*PI*1200*t)\\,0):s=24000:d=" + VISUAL_QUESTION_SECONDS,
             "-c:a", "pcm_s16le", target.toString()), dir);
     }
 

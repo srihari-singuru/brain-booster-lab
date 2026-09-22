@@ -14,7 +14,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
-import java.util.regex.Pattern;
 import javax.sound.sampled.AudioInputStream;
 import javax.sound.sampled.AudioSystem;
 import org.springframework.beans.factory.annotation.Value;
@@ -39,12 +38,9 @@ class SpeechAi {
     }
     private static final Set<String> VOICES = Set.of("alloy", "ash", "ballad", "coral", "echo", "fable",
         "nova", "onyx", "sage", "shimmer", "verse", "marin", "cedar");
-    // One selected speed across every phase; deterministic slot lengths prevent perceptible pacing shifts.
-    private static final double STANDARD_SPEECH_SPEED = 1.00;
-    private static final double QUESTION_SECONDS_AT_1X = 9.0;
-    private static final double TIMER_CUE_SECONDS_AT_1X = 2.5;
-    private static final double REVEAL_SECONDS_AT_1X = 8.0;
-    private static final Pattern WORD = Pattern.compile("[\\p{L}\\p{N}]+", Pattern.UNICODE_CHARACTER_CLASS);
+    // One selected speed across every phase. Preserve the model's natural cadence rather
+    // than time-stretching different-length sentences into identical slots afterwards.
+    private static final double STANDARD_SPEECH_SPEED = 1.05;
     private final String mode;
     private final String model;
     private final String voice;
@@ -98,10 +94,9 @@ class SpeechAi {
         narration.validate(spec);
         List<EpisodeSpeech.PuzzleSpeech> tracks = new ArrayList<>();
         for (int i = 0; i < spec.puzzles().size(); i++) {
-            var beat = narration.puzzles().get(i);
-            double question = normalizePace(directory.resolve("speech-question-" + i + ".wav"), beat.questionLeadIn(), directory, targetSecondsFor("question", profile.speed()));
-            double timer = normalizePace(directory.resolve("speech-timer-" + i + ".wav"), beat.timerCue(), directory, targetSecondsFor("timer", profile.speed()));
-            double reveal = normalizePace(directory.resolve("speech-reveal-" + i + ".wav"), beat.revealExplanation(), directory, targetSecondsFor("reveal", profile.speed()));
+            double question = duration(directory.resolve("speech-question-" + i + ".wav"));
+            double timer = duration(directory.resolve("speech-timer-" + i + ".wav"));
+            double reveal = duration(directory.resolve("speech-reveal-" + i + ".wav"));
             tracks.add(new EpisodeSpeech.PuzzleSpeech(i + 1, question, timer, reveal));
         }
         EpisodeSpeech speech = new EpisodeSpeech(profile.model(), profile.voice(), tracks);
@@ -131,44 +126,26 @@ class SpeechAi {
                 .responseFormat(SpeechCreateParams.ResponseFormat.WAV).build())) {
             Files.copy(response.body(), pending, StandardCopyOption.REPLACE_EXISTING);
         }
-        double seconds = normalizePace(pending, input, target.getParent(), targetSecondsFor(slot, profile.speed()));
+        normalizeLoudness(pending, target.getParent());
+        double seconds = duration(pending);
         Files.move(pending, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
         return seconds;
     }
 
-    private double normalizePace(Path wav, String spokenText, Path directory, double targetSeconds) throws Exception {
+    /** Levels clips consistently without changing their natural pace, pitch, or expression. */
+    private void normalizeLoudness(Path wav, Path directory) throws Exception {
         if (!Files.isRegularFile(wav)) throw new IllegalStateException("Missing local speech clip " + wav.getFileName());
-        long words = WORD.matcher(spokenText).results().count();
-        if (words == 0) throw new IllegalStateException("Speech text has no words to pace");
-        double original = duration(wav);
-        double tempo = original / targetSeconds;
-        EpisodeSpec.require(tempo >= .50 && tempo <= 2.0, "Generated speech pace is outside the safe correction range");
-        Path paced = wav.resolveSibling(wav.getFileName() + ".paced.wav");
+        Path normalized = wav.resolveSibling(wav.getFileName() + ".loud.wav");
         var process = new ProcessBuilder(ffmpeg, "-y", "-v", "warning", "-i", wav.toString(), "-filter:a",
-            "atempo=" + String.format(Locale.ROOT, "%.6f", tempo), "-c:a", "pcm_s16le", paced.toString())
-            .redirectErrorStream(true).redirectOutput(directory.resolve("speech-pace-ffmpeg.log").toFile()).start();
+            "loudnorm=I=-16:TP=-1.5:LRA=7", "-c:a", "pcm_s16le", normalized.toString())
+            .redirectErrorStream(true).redirectOutput(directory.resolve("speech-loudness-ffmpeg.log").toFile()).start();
         try {
-            if (!process.waitFor(2, TimeUnit.MINUTES)) { process.destroyForcibly(); throw new IllegalStateException("FFmpeg timed out normalizing speech pace"); }
+            if (!process.waitFor(2, TimeUnit.MINUTES)) { process.destroyForcibly(); throw new IllegalStateException("FFmpeg timed out leveling speech"); }
         } catch (InterruptedException ex) {
             process.destroyForcibly(); Thread.currentThread().interrupt(); throw ex;
         }
-        if (process.exitValue() != 0) throw new IllegalStateException("FFmpeg could not normalize local speech pace");
-        double normalized = duration(paced);
-        Files.move(paced, wav, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-        return normalized;
-    }
-
-    /** One globally selected speed, with constant phase durations across every puzzle. */
-    static double targetSecondsFor(String slot, double speed) {
-        EpisodeSpec.require(Double.isFinite(speed) && speed >= .75 && speed <= 1.25,
-            "Voice speed must be between 0.75 and 1.25");
-        double atOneX = switch (slot) {
-            case "question" -> QUESTION_SECONDS_AT_1X;
-            case "timer" -> TIMER_CUE_SECONDS_AT_1X;
-            case "reveal" -> REVEAL_SECONDS_AT_1X;
-            default -> throw new IllegalArgumentException("Unknown speech slot");
-        };
-        return atOneX / speed;
+        if (process.exitValue() != 0) throw new IllegalStateException("FFmpeg could not level local speech");
+        Files.move(normalized, wav, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
     }
 
     private static double duration(Path wav) throws Exception {
@@ -211,13 +188,13 @@ class SpeechAi {
     }
 
     private static String questionDirection() {
-        return "Bright, energetic adult male family-challenge host for children ages 6 to 18 and parents. This clip is one section of a single continuous episode: use the same confident, conversational rhythm as every other question and reveal. Sound delighted, playful and naturally animated, with clear English and a natural bright medium pitch. Use steady phrasing with only brief natural punctuation pauses; do not rush exciting words or drag reflective phrases. Lift questions warmly, smile in the delivery, and make every discovery feel fun. Never sound flat, sleepy, robotic, babyish, classroom-like, or like a frantic game-show host. Be confidently audible without shouting. Speak exactly the supplied words and do not add a greeting.";
+        return "Bright, energetic adult male family-challenge host for children ages 6 to 18 and parents. Deliver this as one continuous show with the same confident, lively rhythm as every other question and reveal. Use a bright, high-leaning natural pitch, clear diction, a smiling voice, and a steady medium-fast conversational pace. Sound excited and warmly inviting, never flat, sleepy, timid, babyish, classroom-like, or frantic. Keep sentence endings crisp; do not rush key words or stretch pauses. Be clearly audible without shouting. Speak exactly the supplied words and do not add a greeting.";
     }
     private static String timerDirection() {
-        return "Energetic adult male timer cue for the same family-challenge host. Match the question narration's bright medium pitch, volume, and steady conversational rhythm. Use a brisk but unhurried launch with crisp, clear words. Say it exactly once; do not count, add sound effects, insert a dramatic pause, or add extra words.";
+        return "Energetic adult male timer cue for the same family-challenge host. Match the question narration's bright, high-leaning natural pitch, clear volume, and steady medium-fast pace. Launch crisply but never rush. Say it exactly once; do not count, add sound effects, insert a dramatic pause, or add extra words.";
     }
     private static String revealDirection() {
-        return "Bright, expressive adult male family-challenge host for children ages 6 to 18 and parents. This clip continues the same narration take: match the question narration's bright medium pitch, volume, and steady conversational rhythm. Make the answer a cheerful aha moment, warmly celebrate the discovery, then clearly explain the proof. Use lively emphasis without speeding up at the reveal. No baby talk, flat delivery, classroom tone, or exaggerated game-show shouting. Speak exactly the supplied words.";
+        return "Bright, expressive adult male family-challenge host for children ages 6 to 18 and parents. Continue the exact same bright, high-leaning natural pitch, clear volume, and steady medium-fast pace as the question. Make the answer a cheerful aha moment, warmly celebrate the discovery, then explain the proof with lively emphasis without speeding up. No baby talk, flat delivery, classroom tone, timid voice, or exaggerated game-show shouting. Speak exactly the supplied words.";
     }
     private static String operatorSuffix(String direction) {
         return direction == null || direction.isBlank() ? "" : " Additional operator direction: " + direction.trim();
