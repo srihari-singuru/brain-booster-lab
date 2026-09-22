@@ -691,6 +691,10 @@ class StudioService {
             var draft = recoverExisting ? speaker.recoverExisting(spec, directory(id)) : speaker.speak(spec, narration, directory(id), profile, stageInstructions(e).forAction("speech"));
             draft.speech().validate(spec);
             renderer.writeSpeechTrack(spec, draft.speech(), directory(id));
+            // A new voice track changes the fixed-clock composition. Never leave an older preview
+            // available as though it matched the regenerated local audio.
+            Files.deleteIfExists(directory(id).resolve("preview.mp4"));
+            Files.deleteIfExists(directory(id).resolve("final.mp4"));
             e.speechJson = json.writeValueAsString(draft.speech());
             e.speechModel = draft.speech().model(); e.speechVoice = draft.speech().voice();
             stage(e, "ART_REVIEW");

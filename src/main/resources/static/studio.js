@@ -120,7 +120,7 @@ function actionFor(e, index) {
     e.artworkReady && e.artworkSelectionFinalized && [e.narration ? 'Regenerate narration' : 'Generate narration', e.narration ? 'Write a fresh story-led narration for these selected puzzles. Existing voice clips will be cleared.' : 'Write the story-led narration for these selected puzzles only.', 'narration', false],
     e.narration && e.artworkReady && !groundingGatePassed(e) && ['Ground narration', 'Verify every narrated clue against the finished images.', 'ground-narration', false],
     groundingGatePassed(e) && [e.speechReady ? 'Regenerate voice' : 'Generate voice', e.speechReady ? 'Replace the saved voice clips using the fixed production clock. This uses speech credits.' : 'Create local voice clips using the saved voice settings. This uses speech credits.', 'speech', true],
-    e.speechReady && !e.previewReady && ['Render preview', 'Create a reviewable video before approval.', 'preview', false],
+    e.speechReady && [e.previewReady ? 'Re-render preview' : 'Render preview', e.previewReady ? 'Rebuild the local review video from the current voice, artwork, and fixed production clock. This does not use OpenAI credits.' : 'Create a reviewable video before approval.', 'preview', false],
     e.previewReady && !e.approvedAt && ['Approve episode', 'Lock this reviewed episode for final rendering.', 'approve', false],
     e.approvedAt && !e.finalReady && ['Render final video', 'Create the downloadable final video.', 'render', false]
   ];
