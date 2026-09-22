@@ -84,4 +84,42 @@ class NarrationWorkflowTest {
         assertThat(view.status()).isEqualTo("ART_REVIEW");
         verify(renderer).writeNarration(spec, narration, directory.resolve(episode.id.toString()));
     }
+
+    @Test void appliesGroundingEditorsCorrectedNarrationLocallyWhenOnlyWordingFailed() throws Exception {
+        StudioRepository repository = mock(StudioRepository.class);
+        StudioAi puzzles = mock(StudioAi.class);
+        NarrationAi narrator = mock(NarrationAi.class);
+        SpeechAi speaker = mock(SpeechAi.class);
+        StudioRenderer renderer = mock(StudioRenderer.class);
+        StudioEpisode episode = new StudioEpisode("Family mystery");
+        EpisodeSpec spec = PilotFixtures.kids();
+        var json = JsonMapper.builder().build();
+        EpisodeNarration corrected = new EpisodeNarration("Welcome to our bright puzzle show today.",
+            java.util.stream.IntStream.range(0, spec.puzzles().size()).mapToObj(index -> {
+                String answer = spec.puzzles().get(index).answerId();
+                return new EpisodeNarration.PuzzleNarration(index + 1,
+                    "A cheerful little scene is waiting. One option has a clever surprise. Can you solve this friendly puzzle before the timer starts?",
+                    "Take eight seconds and choose your answer now.",
+                    "OPTION " + answer + " is right. The clear picture clue shows why it fits this playful mystery, while the other choices do not.");
+            }).toList(), "Wonderful thinking. Come back for another puzzle soon.");
+        var grounding = new NarrationGrounding(corrected, java.util.stream.IntStream.range(0, spec.puzzles().size())
+            .mapToObj(index -> new NarrationGrounding.Finding(index + 1, true, index != 1, true,
+                index == 1 ? "Corrected reveal wording now matches the frame." : "Matches the frame."))
+            .toList());
+        episode.specJson = json.writeValueAsString(spec);
+        episode.narrationJson = json.writeValueAsString(corrected);
+        episode.narrationGroundingJson = json.writeValueAsString(grounding);
+        episode.speechJson = "old speech";
+        when(repository.findById(episode.id)).thenReturn(Optional.of(episode));
+        when(repository.saveAndFlush(any())).thenAnswer(call -> call.getArgument(0));
+
+        StudioService service = new StudioService(repository, puzzles, narrator, speaker, renderer, directory.toString());
+        var view = service.applyGroundedNarrationCorrection(episode.id);
+
+        assertThat(view.status()).isEqualTo("ART_REVIEW");
+        assertThat(view.narrationGrounding().passes(spec)).isTrue();
+        assertThat(view.speech()).isNull();
+        verify(renderer).writeNarration(spec, corrected, directory.resolve(episode.id.toString()));
+        org.mockito.Mockito.verifyNoInteractions(puzzles, narrator, speaker);
+    }
 }

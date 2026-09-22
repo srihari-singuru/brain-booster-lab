@@ -104,6 +104,19 @@ class StudioService {
      */
     synchronized View startGenerate(UUID id) { return start(id, "GENERATING", () -> generate(id)); }
     synchronized View startReview(UUID id) { return start(id, "REVIEWING", () -> review(id)); }
+    /** Replaces one independently rejected concept in a new version; the source episode is never overwritten. */
+    synchronized View startReviewPuzzleRegeneration(UUID id, Integer requestedPuzzleNumber) {
+        var source = find(id);
+        require(source.approvedAt == null, "Approved episode is immutable; create a revision");
+        var original = spec(source);
+        int index = remediationIndex(requestedPuzzleNumber, original.puzzles().size());
+        var finding = reviewFindingNeedingRemediation(source, original, index);
+        var revision = find(revise(id, original).id());
+        revision.stageInstructionsJson = source.stageInstructionsJson;
+        stage(revision, "GENERATING");
+        launch(revision, () -> regenerateReviewedPuzzle(id, revision.id, index, finding.notes()));
+        return view(revision);
+    }
     synchronized View continueWithReviewWarnings(UUID id) {
         var episode = find(id);
         require(episode.approvedAt == null, "Approved episode is immutable; create a revision");
@@ -116,6 +129,43 @@ class StudioService {
     }
     synchronized View startNarration(UUID id) { return start(id, "NARRATING", () -> narration(id)); }
     synchronized View startGroundNarration(UUID id) { return start(id, "NARRATION_GROUNDING", () -> groundNarration(id)); }
+    /** Repairs only the artwork which caused a visual grounding finding, in a new safe revision. */
+    synchronized View startGroundingArtworkRegeneration(UUID id, Integer requestedPuzzleNumber) {
+        var source = find(id);
+        require(source.approvedAt == null, "Approved episode is immutable; create a revision");
+        var original = spec(source);
+        int index = remediationIndex(requestedPuzzleNumber, original.puzzles().size());
+        var finding = groundingFindingNeedingArtwork(source, original, index);
+        var revision = find(revise(id, original).id());
+        inheritForArtworkRemediation(source, revision);
+        stage(revision, "PREPARING_ART");
+        launch(revision, () -> regenerateGroundingArtwork(revision.id, index, finding.notes()));
+        return view(revision);
+    }
+    /** Uses the grounding editor's already-produced corrected script, so this is a local, no-credit action. */
+    synchronized View applyGroundedNarrationCorrection(UUID id) {
+        var episode = find(id);
+        require(episode.approvedAt == null, "Approved episode is immutable; create a revision");
+        var spec = spec(episode);
+        var grounding = narrationGrounding(episode, spec);
+        require(grounding.findings().stream().allMatch(f -> f.visualClueConfirmed() && f.optionOnly()),
+            "Regenerate the affected artwork first; the grounding editor could not confirm every visual clue.");
+        require(grounding.findings().stream().anyMatch(f -> !f.narrationMatchesFrame()),
+            "The saved grounding already matches the narration to every frame.");
+        var corrected = new NarrationGrounding(grounding.narration(), grounding.findings().stream()
+            .map(f -> new NarrationGrounding.Finding(f.puzzleNumber(), true, true, true, f.notes())).toList());
+        episode.narrationGroundingJson = json.writeValueAsString(corrected);
+        episode.narrationGroundingOverridden = false;
+        episode.narrationJson = json.writeValueAsString(corrected.narration());
+        episode.speechJson = null; episode.speechModel = null; episode.speechVoice = null;
+        try {
+            var production = settings(episode);
+            if (production.equals(defaults)) renderer.writeNarration(spec, corrected.narration(), directory(id));
+            else renderer.writeNarration(spec, corrected.narration(), directory(id), production.channelName());
+            stage(episode, "ART_REVIEW");
+            return view(episode);
+        } catch (Exception ex) { return failed(episode, ex); }
+    }
     synchronized View continueWithGroundingWarnings(UUID id) {
         var episode = find(id);
         require(episode.approvedAt == null, "Approved episode is immutable; create a revision");
@@ -190,6 +240,10 @@ class StudioService {
         var episode = find(id);
         require(!active(episode.status), "This episode is already working in the background");
         stage(episode, status);
+        return launch(episode, action);
+    }
+    /** Starts already-persisted work and always settles the visible episode state on worker failure. */
+    private View launch(StudioEpisode episode, Runnable action) {
         try {
             worker.execute(() -> {
                 try {
@@ -198,7 +252,7 @@ class StudioService {
                     // Individual stages deliberately validate their preconditions before their
                     // own try/catch blocks. The worker boundary must still settle the saved
                     // state if one of those checks (or a future stage) throws first.
-                    recordWorkerFailure(id, exception);
+                    recordWorkerFailure(episode.id, exception);
                 }
             });
         } catch (RuntimeException exception) {
@@ -281,7 +335,8 @@ class StudioService {
                         for (Path file : files.filter(f -> f.getFileName().toString().equals("art-" + index + ".png")
                             || f.getFileName().toString().equals("provenance-" + index + ".json")
                             || f.getFileName().toString().equals("overlay-" + index + ".json")
-                            || f.getFileName().toString().matches("visual-check-" + index + "-[0-9a-f]{64}\\.json")).toList())
+                            || f.getFileName().toString().equals("artwork-conformance-" + index + ".json")
+                            || f.getFileName().toString().matches("visual-(?:check|inspection)-" + index + "-[0-9a-f]{64}\\.json")).toList())
                             Files.copy(file, targetDir.resolve(file.getFileName()));
                     }
                     Files.writeString(targetDir.resolve("reused-" + i + ".txt"), "Unchanged artwork reused from episode " + id);
@@ -290,6 +345,64 @@ class StudioService {
         }
         // Original script/assets/approval are untouched. Every revision needs fresh checks and approval.
         return view(repository.saveAndFlush(revision));
+    }
+
+    private void regenerateReviewedPuzzle(UUID sourceId, UUID revisionId, int index, String reviewerNotes) {
+        StudioEpisode revision = find(revisionId);
+        StudioEpisode source = find(sourceId);
+        var original = spec(source);
+        try {
+            var production = settings(revision);
+            String rejectedPuzzle = json.writeValueAsString(original.puzzles().get(index));
+            String direction = stageInstructions(source).forAction("generate") + "\n\nREMEDIATION: Replace only puzzle " + (index + 1)
+                + ". It failed an independent review. Make a completely fresh picture-first family puzzle with a different setting, clue mechanism, question shape, and answer logic. "
+                + "Do not reuse this rejected puzzle or its concept: " + rejectedPuzzle + "\nReviewer note: " + trimForPrompt(reviewerNotes, 1000);
+            var draft = ai.generate(source.brief, 1, production.textModel(), direction, recentPuzzleTitles(revisionId));
+            var puzzles = new ArrayList<>(original.puzzles());
+            puzzles.set(index, draft.spec().puzzles().getFirst());
+            var replacement = new EpisodeSpec(original.title(), List.copyOf(puzzles));
+            replacement.validate();
+            revision.specJson = json.writeValueAsString(replacement);
+            revision.reviewJson = null; revision.puzzleReviewOverridden = false;
+            revision.scriptModel = draft.model(); revision.responseId = draft.responseId();
+            clearArtworkForPuzzle(directory(revisionId), index);
+            stage(revision, "SCRIPT_REVIEW");
+        } catch (Exception ex) { failed(revision, ex); }
+    }
+
+    private void inheritForArtworkRemediation(StudioEpisode source, StudioEpisode revision) {
+        revision.reviewJson = source.reviewJson;
+        revision.puzzleReviewOverridden = source.puzzleReviewOverridden;
+        revision.artworkSelectionFinalized = source.artworkSelectionFinalized;
+        revision.narrationJson = source.narrationJson;
+        revision.narrationReviewJson = source.narrationReviewJson;
+        revision.narrationModel = source.narrationModel;
+        revision.narrationResponseId = source.narrationResponseId;
+        revision.stageInstructionsJson = source.stageInstructionsJson;
+        revision.narrationGroundingJson = null; revision.narrationGroundingModel = null; revision.narrationGroundingResponseId = null;
+        revision.narrationGroundingOverridden = false;
+        revision.speechJson = null; revision.speechModel = null; revision.speechVoice = null;
+        try {
+            Path sourceDir = directory(source.id), targetDir = directory(revision.id);
+            Files.createDirectories(targetDir);
+            for (int i = 0; i < spec(source).puzzles().size(); i++) copyArtworkEvidence(sourceDir, targetDir, i);
+        } catch (Exception ex) { throw new IllegalStateException("Unable to preserve unchanged artwork checks in the recovery version", ex); }
+        save(revision);
+    }
+
+    private void regenerateGroundingArtwork(UUID revisionId, int index, String groundingNotes) {
+        StudioEpisode revision = find(revisionId);
+        try {
+            var spec = spec(revision);
+            var production = settings(revision);
+            Path dir = directory(revisionId);
+            clearArtworkDerivatives(dir, index);
+            ai.repairArtwork(spec.puzzles().get(index), dir, index, production.imageModel(),
+                stageInstructions(revision).forAction("artwork"), "Grounding rejected this image. Correct the visual evidence precisely: " + trimForPrompt(groundingNotes, 1200));
+            // The normal preparation path preserves every unaffected asset and re-runs only the
+            // cleared visual checks for this changed frame.
+            artwork(revisionId);
+        } catch (Exception ex) { failed(revision, ex); }
     }
 
     /** A rendering-only revision: no paid calls, no content changes, no inherited visual approval. */
@@ -654,6 +767,28 @@ class StudioService {
         }
         return true;
     }
+    private int remediationIndex(Integer requestedPuzzleNumber, int total) {
+        require(requestedPuzzleNumber != null && requestedPuzzleNumber >= 1 && requestedPuzzleNumber <= total,
+            "Choose a valid puzzle number from 1 to " + total);
+        return requestedPuzzleNumber - 1;
+    }
+    private StudioAi.Finding reviewFindingNeedingRemediation(StudioEpisode episode, EpisodeSpec spec, int index) {
+        require(episode.reviewJson != null, "Run the puzzle review before regenerating a failed puzzle");
+        var review = json.readValue(episode.reviewJson, StudioAi.Review.class);
+        require(review.findings() != null && review.findings().size() == spec.puzzles().size(),
+            "The saved review is incomplete; run it again before regenerating a puzzle");
+        var finding = review.findings().get(index);
+        require(finding != null && finding.puzzleNumber() == index + 1, "The saved review is incomplete; run it again before regenerating a puzzle");
+        require(!finding.fair() || !spec.puzzles().get(index).answerId().equals(finding.independentlySolvedAnswerId()),
+            "Only a puzzle that failed review can be regenerated from this control");
+        return finding;
+    }
+    private NarrationGrounding.Finding groundingFindingNeedingArtwork(StudioEpisode episode, EpisodeSpec spec, int index) {
+        var grounding = narrationGrounding(episode, spec);
+        var finding = grounding.findings().get(index);
+        require(!finding.visualClueConfirmed(), "This puzzle's visual clue already passed grounding; no artwork repair is needed");
+        return finding;
+    }
     private List<Integer> selectedPuzzlePositions(List<Integer> requestedNumbers, int total) {
         require(requestedNumbers != null && !requestedNumbers.isEmpty(), "Choose at least one puzzle to continue");
         var unique = new TreeSet<Integer>();
@@ -679,6 +814,43 @@ class StudioService {
     }
     private static void copyIfPresent(Path source, Path target) throws java.io.IOException {
         if (Files.isRegularFile(source)) Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING);
+    }
+    /** Visual approvals are copied only into an artwork-only recovery; ordinary revisions require fresh review. */
+    private static void copyArtworkEvidence(Path sourceDir, Path targetDir, int index) throws java.io.IOException {
+        copyIfPresent(sourceDir.resolve("visual-review-" + index + ".json"), targetDir.resolve("visual-review-" + index + ".json"));
+        copyIfPresent(sourceDir.resolve("visual-review-" + index + ".sha256"), targetDir.resolve("visual-review-" + index + ".sha256"));
+        try (var files = Files.list(sourceDir)) {
+            for (Path file : files.filter(f -> f.getFileName().toString().matches("visual-(?:check|inspection)-" + index + "-[0-9a-f]{64}\\.json")).toList())
+                Files.copy(file, targetDir.resolve(file.getFileName()), StandardCopyOption.REPLACE_EXISTING);
+        }
+    }
+    /** Removes only derived assets for a changed puzzle; all other saved work in a revision survives. */
+    private static void clearArtworkForPuzzle(Path dir, int index) throws java.io.IOException {
+        clearArtworkDerivatives(dir, index);
+        if (!Files.isDirectory(dir)) return;
+        try (var files = Files.list(dir)) {
+            for (Path file : files.filter(f -> f.getFileName().toString().matches("art-" + index + "(?:-.*)?\\.png")
+                || f.getFileName().toString().equals("reused-" + index + ".txt")).toList()) Files.deleteIfExists(file);
+        }
+    }
+    private static void clearArtworkDerivatives(Path dir, int index) throws java.io.IOException {
+        if (!Files.isDirectory(dir)) return;
+        try (var files = Files.list(dir)) {
+            for (Path file : files.filter(f -> {
+                String name = f.getFileName().toString();
+                return name.equals("provenance-" + index + ".json") || name.equals("overlay-" + index + ".json")
+                    || name.equals("artwork-conformance-" + index + ".json") || name.equals("question-" + index + ".png")
+                    || name.equals("reveal-" + index + ".png") || name.equals("visual-review-" + index + ".json")
+                    || name.equals("visual-review-" + index + ".sha256") || name.equals("speech-question-" + index + ".wav")
+                    || name.equals("speech-timer-" + index + ".wav") || name.equals("speech-reveal-" + index + ".wav")
+                    || name.matches("visual-(?:check|inspection)-" + index + "-[0-9a-f]{64}\\.json");
+            }).toList()) Files.deleteIfExists(file);
+        }
+    }
+    private static String trimForPrompt(String value, int max) {
+        if (value == null || value.isBlank()) return "No additional reviewer note was returned.";
+        String clean = value.trim();
+        return clean.length() <= max ? clean : clean.substring(0, max);
     }
     private EpisodeNarration narration(StudioEpisode e, EpisodeSpec spec) {
         require(e.narrationJson != null, "Generate narration first");

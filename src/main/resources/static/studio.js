@@ -115,7 +115,7 @@ function actionFor(e, index) {
     !e.spec && [retryingGeneration ? 'Retry puzzle generation' : 'Generate puzzles', retryingGeneration ? 'Send a concise recovery request. No prior puzzle content was saved.' : 'Generate the puzzle script with your configured text model.', 'generate', false],
     e.spec && !reviewGatePassed(e) && [e.review ? 'Run puzzle review again' : 'Review puzzles', e.review ? 'Run the fairness and reasoning check again using the saved puzzles.' : 'Run the fairness and reasoning check before artwork.', 'review', false],
     reviewGatePassed(e) && !e.artworkReady && ['Generate artwork', 'Create clean illustrations, then check candidate order and the clue before the blind review. A detected mismatch may use one repair image credit for that puzzle.', 'artwork', true],
-    e.artworkReady && e.artworkSelectionFinalized && !e.narration && ['Generate narration', 'Write the story-led narration for these selected puzzles only.', 'narration', false],
+    e.artworkReady && e.artworkSelectionFinalized && [e.narration ? 'Regenerate narration' : 'Generate narration', e.narration ? 'Write a fresh story-led narration for these selected puzzles. Existing voice clips will be cleared.' : 'Write the story-led narration for these selected puzzles only.', 'narration', false],
     e.narration && e.artworkReady && !groundingGatePassed(e) && ['Ground narration', 'Verify every narrated clue against the finished images.', 'ground-narration', false],
     groundingGatePassed(e) && !e.speechReady && ['Generate voice', 'Create local voice clips using the saved voice settings. This uses speech credits.', 'speech', true],
     e.speechReady && !e.previewReady && ['Render preview', 'Create a reviewable video before approval.', 'preview', false],
@@ -160,11 +160,25 @@ function continueWithReviewWarnings(e) {
     finally { busy = false; draw(); }
   };
 }
+function regenerateReviewPuzzle(e, puzzleNumber) {
+  return async () => {
+    if (busy) return;
+    busy = true; draw(); notice(`Creating a new version and regenerating Puzzle ${puzzleNumber}…`);
+    try {
+      episode = await request('/' + e.id + '/regenerate-review-puzzle', 'POST', {puzzleNumber});
+      selected = episode.id; location.hash = selected; step = 0;
+      localStorage.setItem(`brain-booster-step-${episode.id}`, '0');
+      if (isWorking(episode)) localStorage.setItem(runningKey(episode), String(Date.now()));
+      notice(`Puzzle ${puzzleNumber} is regenerating in a new version. The original episode is unchanged.`);
+    } catch (error) { notice(error.message); }
+    finally { busy = false; draw(); }
+  };
+}
 function reviewDecision(e) {
   if (!e.review || reviewGatePassed(e)) return null;
   const box = el('aside', null, 'review-decision');
   if (!reviewCanBeOverridden(e)) {
-    box.append(el('h3', 'Do not continue yet'), el('p', 'The reviewer could not confirm one or more answers. Update the script or run the review again before spending on artwork.'));
+    box.append(el('h3', 'Resolve the failed puzzle'), el('p', 'Use Regenerate puzzle on the failed finding below. It creates a new version and makes one manual text-generation request; your original episode remains unchanged.'));
     return box;
   }
   box.append(el('h3', 'Choose the next path'), el('p', 'The reviewer agrees with every answer, but flagged quality concerns. You can run the review again, or continue with these saved warnings. Continuing does not make an OpenAI call.'));
@@ -184,11 +198,37 @@ function continueWithGroundingWarnings(e) {
     finally { busy = false; draw(); }
   };
 }
+function regenerateGroundingArtwork(e, puzzleNumber) {
+  return async () => {
+    if (busy) return;
+    busy = true; draw(); notice(`Creating a new version and regenerating artwork for Puzzle ${puzzleNumber}…`);
+    try {
+      episode = await request('/' + e.id + '/regenerate-grounding-artwork', 'POST', {puzzleNumber});
+      selected = episode.id; location.hash = selected; step = 2;
+      localStorage.setItem(`brain-booster-step-${episode.id}`, '2');
+      if (isWorking(episode)) localStorage.setItem(runningKey(episode), String(Date.now()));
+      notice(`Artwork for Puzzle ${puzzleNumber} is regenerating in a new version. The original episode is unchanged.`);
+    } catch (error) { notice(error.message); }
+    finally { busy = false; draw(); }
+  };
+}
+function applyGroundedNarration(e) {
+  return async () => {
+    if (busy) return;
+    busy = true; draw(); notice('Applying the grounding editor’s corrected narration…');
+    try {
+      episode = await request('/' + e.id + '/apply-grounded-narration');
+      step = firstOpenStep(episode); localStorage.setItem(`brain-booster-step-${episode.id}`, String(step));
+      notice('Corrected narration is saved. No OpenAI request was made. Generate voice when you are ready.');
+    } catch (error) { notice(error.message); }
+    finally { busy = false; draw(); }
+  };
+}
 function groundingDecision(e) {
   if (!e.narrationGrounding || groundingGatePassed(e)) return null;
   const box = el('aside', null, 'review-decision');
   if (!groundingCanBeOverridden(e)) {
-    box.append(el('h3', 'Do not continue yet'), el('p', 'Grounding is incomplete or the narration does not use OPTION letters only. Fix this before creating voice.'));
+    box.append(el('h3', 'Resolve the failed item'), el('p', 'Use the focused action on the finding below. A visual mismatch can regenerate only that artwork; a wording issue can return to Narration.'));
     return box;
   }
   box.append(el('h3', 'Choose the next path'), el('p', 'The grounding editor found visual or wording concerns, but OPTION-only narration is intact. You can ground again, or consciously continue with these saved warnings. Continuing makes no OpenAI call.'));
@@ -300,7 +340,17 @@ function reviewOutput(e, pane) {
   if (!e.review) return emptyOutput(pane, 'The independent fairness review will appear here.');
   const pass = isReviewed(e); const overridden = !!e.puzzleReviewOverridden;
   pane.append(el('p', pass ? 'All puzzles passed the independent review.' : overridden ? 'You chose to continue with the saved review warnings.' : 'One or more puzzles need changes before artwork.', pass || overridden ? 'pass-note' : 'warning-note'));
-  e.review.findings?.forEach(f => { const card = el('article', null, 'finding'); card.append(el('h4', `Puzzle ${f.puzzleNumber} — ${f.fair ? 'Passed' : 'Needs changes'}`)); facts(card, {IndependentlySolvedAnswerId:f.independentlySolvedAnswerId, Fair:f.fair, Notes:f.notes || f.reasoning || ''}); pane.append(card); });
+  e.review.findings?.forEach(f => {
+    const expected = e.spec?.puzzles?.[f.puzzleNumber - 1]?.answerId;
+    const failed = !f.fair || expected !== f.independentlySolvedAnswerId;
+    const card = el('article', null, 'finding'); card.append(el('h4', `Puzzle ${f.puzzleNumber} — ${failed ? 'Needs changes' : 'Passed'}`));
+    facts(card, {IndependentlySolvedAnswerId:f.independentlySolvedAnswerId, Fair:f.fair, Notes:f.notes || f.reasoning || ''});
+    if (failed) {
+      card.append(el('p', 'This manually uses one text-generation request and opens a new episode version. All other saved work is retained where valid.', 'visual-note'));
+      addButton(card, `Regenerate puzzle ${f.puzzleNumber}`, regenerateReviewPuzzle(e, f.puzzleNumber), 'secondary', isWorking(e));
+    }
+    pane.append(card);
+  });
 }
 function artworkOutput(e, pane) {
   outputTitle(pane, 'Generated result', 'Artwork');
@@ -326,7 +376,24 @@ function groundingOutput(e, pane) {
   if (!e.narrationGrounding) return emptyOutput(pane, 'The visual grounding findings will appear here.');
   const pass = isGrounded(e), overridden = !!e.narrationGroundingOverridden;
   pane.append(el('p', pass ? 'Every narration clue matches the completed artwork.' : overridden ? 'You chose to continue with the saved grounding warnings.' : 'Grounding found an issue that needs review.', pass || overridden ? 'pass-note' : 'warning-note'));
-  e.narrationGrounding.findings?.forEach(f => { const card = el('article', null, 'finding'); card.append(el('h4', `Puzzle ${f.puzzleNumber}`)); facts(card, {VisualClueConfirmed:f.visualClueConfirmed, NarrationMatchesFrame:f.narrationMatchesFrame, OptionOnly:f.optionOnly, Notes:f.notes}); pane.append(card); });
+  const narrationFixAvailable = e.narrationGrounding.findings?.some(f => f.visualClueConfirmed && f.optionOnly && !f.narrationMatchesFrame)
+    && e.narrationGrounding.findings.every(f => f.visualClueConfirmed && f.optionOnly);
+  let narrationFixShown = false;
+  e.narrationGrounding.findings?.forEach(f => {
+    const card = el('article', null, 'finding'); card.append(el('h4', `Puzzle ${f.puzzleNumber}`)); facts(card, {VisualClueConfirmed:f.visualClueConfirmed, NarrationMatchesFrame:f.narrationMatchesFrame, OptionOnly:f.optionOnly, Notes:f.notes});
+    if (!f.visualClueConfirmed) {
+      card.append(el('p', 'This manually uses one image-generation request and opens a new episode version. Only this puzzle’s artwork is replaced.', 'visual-note'));
+      addButton(card, `Regenerate artwork for puzzle ${f.puzzleNumber}`, regenerateGroundingArtwork(e, f.puzzleNumber), 'secondary', isWorking(e));
+    } else if (!f.optionOnly) {
+      card.append(el('p', 'This is a narration wording issue. Return to Narration to generate a fresh episode script before grounding again.', 'visual-note'));
+      addButton(card, 'Go to narration', () => setStep(3), 'secondary', isWorking(e));
+    } else if (narrationFixAvailable && !narrationFixShown && !f.narrationMatchesFrame) {
+      narrationFixShown = true;
+      card.append(el('p', 'The grounding editor supplied corrected narration for every affected puzzle. Applying it is local and uses no credits.', 'visual-note'));
+      addButton(card, 'Apply corrected narration', applyGroundedNarration(e), 'secondary', isWorking(e));
+    }
+    pane.append(card);
+  });
 }
 function voiceOutput(e, pane) {
   outputTitle(pane, 'Generated result', 'Voice clips');
