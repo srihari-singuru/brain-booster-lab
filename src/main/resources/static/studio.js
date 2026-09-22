@@ -49,7 +49,7 @@ function firstOpenStep(e) {
 function retryDefinition(e) {
   if (!['FAILED', 'INTERRUPTED'].includes(e?.status)) return null;
   if (e.failedStage === 'SPEAKING' && /speech duration is outside its safe range|voice is .*fixed slot|voice clip is longer than its fixed/i.test(e.lastError || ''))
-    return [3, 'Regenerate shorter narration', 'An existing voice clip is longer than its fixed video slot. Create a shorter narration script first; this clears the partial clips and does not use speech credits.', 'narration'];
+    return [3, 'Regenerate shorter narration', 'An existing voice clip is longer than its fixed video slot. Create a shorter narration script first; this clears the partial clips and uses only your configured text-model credits, not speech credits.', 'narration'];
   const recovered = {
     GENERATING:[0, 'Retry puzzle generation', 'Send a concise recovery request. No prior puzzle content was saved.', 'generate'],
     REVIEWING:[1, 'Retry puzzle review', 'Run the independent fairness review again using the saved puzzles.', 'review'],
