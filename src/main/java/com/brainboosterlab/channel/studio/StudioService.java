@@ -51,7 +51,7 @@ class StudioService {
         this.root = Path.of(output).toAbsolutePath().normalize();
         String text = fallback(textModel, "gpt-4o-mini");
         this.defaults = new EpisodeSettings("BRAIN BOOSTER LAB", 3, text, fallback(imageModel, "gpt-image-1"),
-            fallback(narrationModel, text), fallback(speechModel, "gpt-4o-mini-tts"), fallback(speechVoice, "cedar"), 1.05);
+            fallback(narrationModel, text), fallback(speechModel, "gpt-4o-mini-tts"), fallback(speechVoice, "cedar"), 1.0);
     }
 
     /** Keeps focused unit tests and local tooling independent of Spring property wiring. */

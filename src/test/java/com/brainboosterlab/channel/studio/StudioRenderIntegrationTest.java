@@ -29,8 +29,8 @@ class StudioRenderIntegrationTest {
         var probe=new ProcessBuilder("ffprobe","-v","error","-show_entries","stream=codec_type,width,height:format=duration","-of","json",video.toString()).start();
         String metadata=new String(probe.getInputStream().readAllBytes(),java.nio.charset.StandardCharsets.UTF_8);
         assertThat(probe.waitFor()).isZero();
-        double expectedSeconds=spec.puzzles().stream().mapToInt(p->"visual".equals(p.kind())
-            ? StudioRenderer.VISUAL_SETUP_SECONDS + StudioRenderer.VISUAL_QUESTION_SECONDS + StudioRenderer.VISUAL_REVEAL_SECONDS
+        double expectedSeconds=spec.puzzles().stream().mapToDouble(p->"visual".equals(p.kind())
+            ? StudioRenderer.VISUAL_SETUP_SECONDS + StudioRenderer.VISUAL_TIMER_CUE_SECONDS + StudioRenderer.VISUAL_QUESTION_SECONDS + StudioRenderer.VISUAL_REVEAL_SECONDS
             : p.thinkSeconds()+20).sum();
         for(int i=1;i<3;i++) if("visual".equals(spec.puzzles().get(i).kind())&&"visual".equals(spec.puzzles().get(i-1).kind()))
             expectedSeconds+=(double)PuzzleMotion.TRANSITION_TICKS/PuzzleMotion.FPS;

@@ -14,7 +14,7 @@ const REVIEW_ITEMS = [
   ['voice', 'The voice pace and energy feel right.'],
   ['preview', 'I watched the preview video from start to finish.']
 ];
-let defaultSettings = {channelName:'BRAIN BOOSTER LAB', puzzleCount:3, textModel:'gpt-4o-mini', imageModel:'gpt-image-1', narrationModel:'gpt-4o-mini', speechModel:'gpt-4o-mini-tts', speechVoice:'cedar', speechSpeed:1.05};
+let defaultSettings = {channelName:'BRAIN BOOSTER LAB', puzzleCount:3, textModel:'gpt-4o-mini', imageModel:'gpt-image-1', narrationModel:'gpt-4o-mini', speechModel:'gpt-4o-mini-tts', speechVoice:'cedar', speechSpeed:1};
 let modelCatalog = {text:['gpt-6-astra','gpt-5.6-sol','gpt-5.6-terra'],image:['gpt-image-2'],speech:['gpt-4o-mini-tts'],voices:['cedar','marin','alloy','ash','ballad','coral','echo','fable','nova','onyx','sage','shimmer','verse'],live:false};
 const by = id => document.querySelector('#' + id);
 const el = (tag, text, className) => { const node = document.createElement(tag); if (text != null) node.textContent = text; if (className) node.className = className; return node; };
@@ -117,7 +117,7 @@ function actionFor(e, index) {
     reviewGatePassed(e) && !e.artworkReady && ['Generate artwork', 'Create clean illustrations, then check candidate order and the clue before the blind review. A detected mismatch may use one repair image credit for that puzzle.', 'artwork', true],
     e.artworkReady && e.artworkSelectionFinalized && [e.narration ? 'Regenerate narration' : 'Generate narration', e.narration ? 'Write a fresh story-led narration for these selected puzzles. Existing voice clips will be cleared.' : 'Write the story-led narration for these selected puzzles only.', 'narration', false],
     e.narration && e.artworkReady && !groundingGatePassed(e) && ['Ground narration', 'Verify every narrated clue against the finished images.', 'ground-narration', false],
-    groundingGatePassed(e) && !e.speechReady && ['Generate voice', 'Create local voice clips using the saved voice settings. This uses speech credits.', 'speech', true],
+    groundingGatePassed(e) && [e.speechReady ? 'Regenerate voice' : 'Generate voice', e.speechReady ? 'Replace the saved voice clips using the fixed production clock. This uses speech credits.' : 'Create local voice clips using the saved voice settings. This uses speech credits.', 'speech', true],
     e.speechReady && !e.previewReady && ['Render preview', 'Create a reviewable video before approval.', 'preview', false],
     e.previewReady && !e.approvedAt && ['Approve episode', 'Lock this reviewed episode for final rendering.', 'approve', false],
     e.approvedAt && !e.finalReady && ['Render final video', 'Create the downloadable final video.', 'render', false]
@@ -402,7 +402,8 @@ function voiceOutput(e, pane) {
   outputTitle(pane, 'Generated result', 'Voice clips');
   if (!e.speechReady) return emptyOutput(pane, 'The generated voice track will appear here.');
   const audio = document.createElement('audio'); audio.controls = true; audio.src = media(e, 'speech.m4a'); pane.append(audio, el('p', `Voice: ${e.speechVoice || settings(e).speechVoice} · speed ${settings(e).speechSpeed}×`, 'media-caption'));
-  e.speech?.puzzles?.forEach(track => pane.append(el('p', `Puzzle ${track.puzzleNumber}: question ${Number(track.questionSeconds).toFixed(1)}s · timer ${Number(track.timerSeconds).toFixed(1)}s · answer ${Number(track.revealSeconds).toFixed(1)}s`, 'track-line')));
+  pane.append(el('p', 'Fixed production clock per puzzle: 10.0s question · 3.5s cue · 8.0s countdown · 8.0s answer · 2.5s transition.', 'track-line'));
+  e.speech?.puzzles?.forEach(track => pane.append(el('p', `Puzzle ${track.puzzleNumber}: source speech ${Number(track.questionSeconds).toFixed(1)}s · cue ${Number(track.timerSeconds).toFixed(1)}s · answer ${Number(track.revealSeconds).toFixed(1)}s; local silence fills each fixed slot.`, 'track-line')));
 }
 function videoOutput(e, pane, kind) {
   const final = kind === 'final'; outputTitle(pane, 'Generated result', final ? 'Final video' : 'Preview video');

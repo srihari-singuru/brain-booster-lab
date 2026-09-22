@@ -4,8 +4,8 @@ import java.awt.*;
 import java.awt.image.BufferedImage;
 
 final class PuzzleMotion {
-    static final int FPS = 30, REVEAL_TICKS = 36, TRANSITION_TICKS = 60;
-    /** A two-second colour interlude with a short, legible cue and official local icon assets. */
+    static final int FPS = 30, REVEAL_TICKS = 36, TRANSITION_TICKS = 75;
+    /** A two-and-a-half-second colour interlude with a short, legible cue and official local icon assets. */
     static BufferedImage transition(BufferedImage before, BufferedImage after, double progress) {
         if (progress <= 0) return before;
         if (progress >= 1) return after;

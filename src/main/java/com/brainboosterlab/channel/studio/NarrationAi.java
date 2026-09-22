@@ -100,11 +100,11 @@ class NarrationAi {
 
             Structure rules:
             - episodeOpening: one fresh welcome, 4–28 words. It will be used in a future opening, not today’s video.
-            - for each puzzle, questionLeadIn: 20–25 words, designed for about nine seconds at the chosen voice speed. Set a mini-story and ask
+            - for each puzzle, questionLeadIn: 20–25 words, designed for a fixed ten-second spoken slot at the chosen voice speed. Set a mini-story and ask
               the on-screen question naturally, but DO NOT name, label, or hint at the answer or clue. Build a little
               anticipation without repeating the question word-for-word.
-            - timerCue: 5–7 words. It must invite viewers to take exactly EIGHT seconds, and it plays immediately before the fixed eight-second silent timer begins. Do not count aloud.
-            - revealExplanation: 18–23 words, designed for about eight seconds at the chosen voice speed. State the correct choice and the exact
+            - timerCue: 5–7 words. It must invite viewers to take exactly EIGHT seconds. It has a fixed three-and-a-half-second slot while the timer holds at 8; the separate fixed eight-second countdown begins immediately after it. Do not count aloud.
+            - revealExplanation: 18–22 words, designed for a fixed eight-second spoken slot at the chosen voice speed. State the correct choice and the exact
               visible clue/rule that proves it in a lively, natural way that rewards the viewer’s reasoning.
             - episodeClosing: one fresh 4–28-word sign-off for a future ending.
             - Never use a character name, choice label, or descriptive choice name anywhere in narration. Refer to a choice only as its supplied OPTION letter (A through E).
@@ -115,7 +115,7 @@ class NarrationAi {
             PRE-SUBMISSION ACCEPTANCE CHECK — silently check every puzzle beat before returning it. The lead-in
             and timer must not name or telegraph the answer, an OPTION letter, a choice name, or the decisive clue.
             The reveal must use only the correct OPTION letter and must state only the exact proof already supplied
-            in the puzzle specification. Keep the required word ranges, exactly-eight-seconds cue, simple spoken
+            in the puzzle specification. Keep the required word ranges, 10-second question slot, 3.5-second cue, fixed eight-second countdown, 8-second answer slot, simple spoken
             English, family-safe warmth, and a similar spoken density across every puzzle. If a line fails one of
             these checks, rewrite it before returning the structured object. Return narration you expect both the
             independent script editor and final frame-grounding editor to accept without correction.
@@ -152,10 +152,10 @@ class NarrationAi {
             noAnswerLeak is true only when the question lead-in and timer cue do NOT reveal or strongly telegraph the
             correct option, character/name, answer letter, decisive visual clue, or explanation. storyFitsPuzzle is
             true only when the narration uses no invented evidence and the reveal correctly names the right answer and
-            its exact proof, identifying the answer only as the supplied OPTION letter (A through E). It must reject any use of a choice name or label. timeFits is true only when lead-in is 20–25 words, timer cue 5–7 and explicitly says eight seconds, and reveal 18–23.
+            its exact proof, identifying the answer only as the supplied OPTION letter (A through E). It must reject any use of a choice name or label.
             familySafe is true only for warm, age-appropriate, simple language with no pressure, shame, fear, stereotypes or
             unsafe claims. A seven-year-old must understand every line on one listen; reject formal vocabulary, idioms, metaphors,
-            or long tangled sentences. Be adversarial: reject generic filler, babyish delivery, classroom-like explanation, and ambiguous proof. Put concise actionable feedback
+            or long tangled sentences. timeFits is true only when lead-in is 20–25 words for the fixed 10-second slot, timer cue is 5–7 words and explicitly says eight seconds for the fixed 3.5-second cue slot, and reveal is 18–22 words for the fixed 8-second slot. Be adversarial: reject generic filler, babyish delivery, classroom-like explanation, and ambiguous proof. Put concise actionable feedback
             in notes. Do not rubber-stamp.
             Specification: """ + json.writeValueAsString(spec) + "\nNarration: " + json.writeValueAsString(narration) + operatorSuffix(operatorDirection);
         var response = client.responses().create(ResponseCreateParams.builder().model(activeModel).input(prompt)
@@ -193,8 +193,8 @@ class NarrationAi {
             For every puzzle, verify that the correct option and decisive clue are truly visible, readable, and
             unambiguous in the frame. Check that the narration names only the supplied OPTION letter (A through E), never
             a character name or choice label. If the frame supports the puzzle, polish the narration only as needed
-            to speak exactly what a family viewer ages 6–18 can fairly infer from the displayed frame. Preserve the lively 9-second
-            lead-in, fixed 8-second timer, and 8-second reveal structure. Never invent details to repair art.
+            to speak exactly what a family viewer ages 6–18 can fairly infer from the displayed frame. Preserve the fixed
+            10-second question lead-in, 3.5-second timer cue, 8-second countdown, and 8-second reveal structure. Never invent details to repair art.
 
             If any image does not prove its clue, set that finding’s visualClueConfirmed and narrationMatchesFrame
             false, explain the mismatch, and keep the narration conservative. Each notes field must be one or two short sentences, under 300 characters. Return the complete structured

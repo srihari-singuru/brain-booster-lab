@@ -40,7 +40,7 @@ class SpeechAi {
         "nova", "onyx", "sage", "shimmer", "verse", "marin", "cedar");
     // One selected speed across every phase. Preserve the model's natural cadence rather
     // than time-stretching different-length sentences into identical slots afterwards.
-    private static final double STANDARD_SPEECH_SPEED = 1.05;
+    private static final double STANDARD_SPEECH_SPEED = 1.0;
     private final String mode;
     private final String model;
     private final String voice;
@@ -188,13 +188,13 @@ class SpeechAi {
     }
 
     private static String questionDirection() {
-        return "Bright, energetic adult male family-challenge host for children ages 6 to 18 and parents. Deliver this as one continuous show with the same confident, lively rhythm as every other question and reveal. Use a bright, high-leaning natural pitch, clear diction, a smiling voice, and a steady medium-fast conversational pace. Sound excited and warmly inviting, never flat, sleepy, timid, babyish, classroom-like, or frantic. Keep sentence endings crisp; do not rush key words or stretch pauses. Be clearly audible without shouting. Speak exactly the supplied words and do not add a greeting.";
+        return "Bright, energetic adult male family-challenge host for children ages 6 to 18 and parents. Deliver this as one continuous show with the same confident, lively rhythm as every other question and reveal. Use a bright, high-leaning natural pitch, clear diction, a smiling voice, and one steady medium conversational pace. Sound excited and warmly inviting, never flat, sleepy, timid, babyish, classroom-like, or frantic. Leave natural space between thoughts; do not rush key words, cram sentences together, or stretch pauses. Be clearly audible without shouting. Speak exactly the supplied words and do not add a greeting.";
     }
     private static String timerDirection() {
-        return "Energetic adult male timer cue for the same family-challenge host. Match the question narration's bright, high-leaning natural pitch, clear volume, and steady medium-fast pace. Launch crisply but never rush. Say it exactly once; do not count, add sound effects, insert a dramatic pause, or add extra words.";
+        return "Energetic adult male timer cue for the same family-challenge host. Match the question narration's bright, high-leaning natural pitch, clear volume, and one steady medium pace. Launch crisply but never rush. Say it exactly once; do not count, add sound effects, insert a dramatic pause, or add extra words.";
     }
     private static String revealDirection() {
-        return "Bright, expressive adult male family-challenge host for children ages 6 to 18 and parents. Continue the exact same bright, high-leaning natural pitch, clear volume, and steady medium-fast pace as the question. Make the answer a cheerful aha moment, warmly celebrate the discovery, then explain the proof with lively emphasis without speeding up. No baby talk, flat delivery, classroom tone, timid voice, or exaggerated game-show shouting. Speak exactly the supplied words.";
+        return "Bright, expressive adult male family-challenge host for children ages 6 to 18 and parents. Continue the exact same bright, high-leaning natural pitch, clear volume, and one steady medium pace as the question. Make the answer a cheerful aha moment, warmly celebrate the discovery, then explain the proof with lively emphasis without speeding up. Leave natural spaces between ideas. No baby talk, flat delivery, classroom tone, timid voice, or exaggerated game-show shouting. Speak exactly the supplied words.";
     }
     private static String operatorSuffix(String direction) {
         return direction == null || direction.isBlank() ? "" : " Additional operator direction: " + direction.trim();

@@ -17,11 +17,10 @@ class StudioRenderer {
         return spec.puzzles().stream().anyMatch(p -> "visual".equals(p.kind())) ? "kids-thumbnail-10" : LAYOUT_VERSION;
     }
     static final int WIDTH = 1920, HEIGHT = 1080;
-    /** The eight-second thinking period is exact; spoken phases use their measured natural duration. */
-    static final int VISUAL_SETUP_SECONDS = 9;
+    /** Every visual puzzle follows one fixed audio/video clock; speech is padded locally, never time-stretched. */
+    static final int VISUAL_SETUP_SECONDS = 10;
+    static final double VISUAL_TIMER_CUE_SECONDS = 3.5;
     static final int VISUAL_QUESTION_SECONDS = 8;
-    /** A short natural breath plus the timer cue totals exactly three seconds at the default speed. */
-    static final double PRE_TIMER_PAUSE_SECONDS = .50;
     static final int VISUAL_REVEAL_SECONDS = 8;
     static final Color INK = new Color(13, 25, 38), PAPER = new Color(250, 247, 236), GOLD = new Color(255, 209, 96);
     private final String ffmpeg;
@@ -54,7 +53,7 @@ class StudioRenderer {
             script.append("PUZZLE ").append(i + 1).append(" — ").append(puzzle.title()).append("\n")
                 .append("QUESTION LEAD-IN — TARGET ").append(VISUAL_SETUP_SECONDS).append(" SECONDS\n")
                 .append(beat.questionLeadIn()).append("\n")
-                .append("TIMER CUE — AFTER A ").append(String.format(java.util.Locale.ROOT, "%.2f", PRE_TIMER_PAUSE_SECONDS)).append("-SECOND PAUSE; THE FIXED ").append(VISUAL_QUESTION_SECONDS).append("-SECOND TIMER STARTS AFTER THE CUE\n")
+                .append("TIMER CUE — FIXED ").append(String.format(java.util.Locale.ROOT, "%.1f", VISUAL_TIMER_CUE_SECONDS)).append(" SECONDS; THE TIMER SHOWS EIGHT, THEN THE FIXED ").append(VISUAL_QUESTION_SECONDS).append("-SECOND COUNTDOWN STARTS\n")
                 .append(beat.timerCue()).append("\n")
                 .append("SILENT THINKING — EXACTLY ").append(VISUAL_QUESTION_SECONDS).append(" SECONDS\n")
                 .append("REVEAL EXPLANATION — TARGET ").append(VISUAL_REVEAL_SECONDS).append(" SECONDS\n")
@@ -93,18 +92,19 @@ class StudioRenderer {
             var overlay = SceneOverlay.read(dir, i, puzzle);
             boolean visual = "visual".equals(puzzle.kind());
             if (i > 0 && visual && "visual".equals(spec.puzzles().get(i - 1).kind())) {
-                var next = composed(puzzle, art, i, "question", VISUAL_QUESTION_SECONDS, draft, overlay, 1.2, channelName, spec.puzzles().size());
+                var next = composed(puzzle, art, i, "setup", 0, draft, overlay, 1.2, channelName, spec.puzzles().size());
                 for (int tick = 1; tick <= PuzzleMotion.TRANSITION_TICKS; tick++)
                     sequence.add(PuzzleMotion.transition(previous, next, (double)tick / PuzzleMotion.TRANSITION_TICKS), 1);
             }
-            for (String phase : List.of("setup", "question", "reveal")) {
+            for (String phase : List.of("setup", "cue", "question", "reveal")) {
                 int seconds = phase.equals("setup") ? (visual ? VISUAL_SETUP_SECONDS : 8)
+                    : phase.equals("cue") ? (visual ? (int) Math.round(VISUAL_TIMER_CUE_SECONDS) : 0)
                     : phase.equals("reveal") ? (visual ? VISUAL_REVEAL_SECONDS : 12)
                     : (visual ? VISUAL_QUESTION_SECONDS : puzzle.thinkSeconds());
                 if (seconds <= 0) continue;
                 if (visual) {
-                    int totalTicks = (visual && speech != null && !phase.equals("question"))
-                        ? speechTicks(speech, i, phase) : seconds * PuzzleMotion.FPS;
+                    int totalTicks = phase.equals("cue") ? (int) Math.round(VISUAL_TIMER_CUE_SECONDS * PuzzleMotion.FPS)
+                        : seconds * PuzzleMotion.FPS;
                     if (phase.equals("reveal")) {
                         int animatedTicks = Math.min(PuzzleMotion.REVEAL_TICKS, totalTicks);
                         for (int tick = 0; tick < animatedTicks; tick++) {
@@ -119,7 +119,8 @@ class StudioRenderer {
                     } else {
                         for (int tick = 0; tick < totalTicks; tick += 15) {
                             int duration = Math.min(15, totalTicks - tick);
-                            int countdown = phase.equals("question") ? Math.max(1, VISUAL_QUESTION_SECONDS - tick / PuzzleMotion.FPS) : 0;
+                            int countdown = phase.equals("cue") ? VISUAL_QUESTION_SECONDS
+                                : phase.equals("question") ? Math.max(1, VISUAL_QUESTION_SECONDS - tick / PuzzleMotion.FPS) : 0;
                             previous = composed(puzzle, art, i, phase, countdown, draft, overlay, (double)tick / PuzzleMotion.FPS, channelName, spec.puzzles().size());
                             sequence.add(previous, duration);
                         }
@@ -171,15 +172,12 @@ class StudioRenderer {
             requireAudio(dir, "speech-question-" + i + ".wav");
             requireAudio(dir, "speech-timer-" + i + ".wav");
             requireAudio(dir, "speech-reveal-" + i + ".wav");
-            appendAudio(manifest, "speech-question-" + i + ".wav");
-            String pause = "speech-pre-cue-" + i + ".wav";
-            writeSilence(dir.resolve(pause), PRE_TIMER_PAUSE_SECONDS, dir);
-            appendAudio(manifest, pause);
-            appendAudio(manifest, "speech-timer-" + i + ".wav");
+            appendPaddedAudio(manifest, dir, "speech-question-" + i + ".wav", track.questionSeconds(), VISUAL_SETUP_SECONDS, "question");
+            appendPaddedAudio(manifest, dir, "speech-timer-" + i + ".wav", track.timerCueSeconds(), VISUAL_TIMER_CUE_SECONDS, "timer cue");
             String ticks = "speech-ticks-" + i + ".wav";
             writeTicking(dir.resolve(ticks), dir);
             appendAudio(manifest, ticks);
-            appendAudio(manifest, "speech-reveal-" + i + ".wav");
+            appendPaddedAudio(manifest, dir, "speech-reveal-" + i + ".wav", track.revealSeconds(), VISUAL_REVEAL_SECONDS, "answer");
             if (i < spec.puzzles().size() - 1) {
                 String transition = "speech-transition-" + i + ".wav";
                 writeSilence(dir.resolve(transition), PuzzleMotion.TRANSITION_TICKS / (double) PuzzleMotion.FPS, dir);
@@ -195,11 +193,16 @@ class StudioRenderer {
             "This episode uses an AI-generated OpenAI text-to-speech voice. Include this disclosure in the YouTube description before publishing.\n");
     }
 
-    private static int speechTicks(EpisodeSpeech speech, int puzzleIndex, String phase) {
-        var track = speech.puzzles().get(puzzleIndex);
-        double seconds = phase.equals("setup") ? track.questionSeconds() + PRE_TIMER_PAUSE_SECONDS + track.timerCueSeconds()
-            : track.revealSeconds();
-        return Math.max(PuzzleMotion.FPS, (int) Math.round(seconds * PuzzleMotion.FPS));
+    private void appendPaddedAudio(StringBuilder manifest, Path dir, String filename, double actualSeconds, double slotSeconds, String slot) throws Exception {
+        EpisodeSpec.require(actualSeconds <= slotSeconds + .02,
+            "The " + slot + " voice clip is longer than its fixed " + String.format(java.util.Locale.ROOT, "%.1f", slotSeconds)
+                + "-second slot. Regenerate narration with fewer words, then generate voice again.");
+        appendAudio(manifest, filename);
+        double padding = Math.max(0, slotSeconds - actualSeconds);
+        if (padding < .01) return;
+        String silence = filename.replace(".wav", "-padding.wav");
+        writeSilence(dir.resolve(silence), padding, dir);
+        appendAudio(manifest, silence);
     }
 
     private static void appendAudio(StringBuilder manifest, String filename) {
