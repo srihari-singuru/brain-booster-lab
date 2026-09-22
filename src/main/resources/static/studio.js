@@ -232,6 +232,7 @@ function savedSelection(e) {
 }
 function artworkSelection(e) {
   if (!e.artworkReady || e.artworkSelectionFinalized) return null;
+  if ((e.visualReviews || []).some(review => !review.acceptable)) return null;
   const section = el('section', null, 'artwork-selection');
   section.append(el('h3', 'Choose puzzles for the video'), el('p', 'Keep the images you want. The next episode version will use only these puzzles for narration, voice, preview, and final video. Choosing them confirms your visual decision; automated review notes remain visible. This is local and makes no OpenAI call.'));
   const selectedNumbers = new Set(savedSelection(e)); const choices = el('div', null, 'selection-list'); const count = el('p', null, 'selection-count');
@@ -353,7 +354,7 @@ function artworkOutput(e, pane) {
   const failedArtwork = (e.visualReviews || []).filter(review => !review.acceptable);
   if (failedArtwork.length) {
     const recovery = el('aside', null, 'review-decision');
-    recovery.append(el('h3', 'Regenerate every failed artwork'), el('p', `This manually makes ${failedArtwork.length} image-generation ${failedArtwork.length === 1 ? 'request' : 'requests'} and opens a new version. Artwork that passed is retained.`));
+    recovery.append(el('h3', 'Regenerate every failed artwork'), el('p', `A failed image may not have a safe clue ring, because we never circle a clue that the blind solver could not confirm. Regenerate before selecting puzzles. This manually makes ${failedArtwork.length} image-generation ${failedArtwork.length === 1 ? 'request' : 'requests'} and opens a new version; artwork that passed is retained.`));
     addButton(recovery, `Regenerate all ${failedArtwork.length} failed ${failedArtwork.length === 1 ? 'image' : 'images'}`, regenerateFailures(e, '/regenerate-failed-artwork', 'artwork item', failedArtwork.length, 2), 'secondary', isWorking(e));
     pane.append(recovery);
   }

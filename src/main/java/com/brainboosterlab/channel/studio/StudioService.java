@@ -203,6 +203,9 @@ class StudioService {
         var original = spec(source);
         var sourceView = view(source);
         require(sourceView.artworkReady(), "Prepare the complete artwork before choosing puzzles");
+        require(sourceView.visualReviews().size() == original.puzzles().size()
+                && sourceView.visualReviews().stream().allMatch(StudioAi.VisualReview::acceptable),
+            "Regenerate all failed artwork before choosing puzzles. A failed image may not contain a safe clue highlight.");
         var positions = selectedPuzzlePositions(requestedPuzzleNumbers, original.puzzles().size());
         var selectedPuzzles = positions.stream().map(i -> original.puzzles().get(i)).toList();
         var selectedSpec = new EpisodeSpec(original.title(), selectedPuzzles);
