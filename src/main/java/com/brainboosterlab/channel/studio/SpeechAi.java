@@ -79,6 +79,9 @@ class SpeechAi {
             double question = synthesize(beat.questionLeadIn(), directory.resolve("speech-question-" + i + ".wav"), questionDirection() + operatorSuffix(operatorDirection), profile, "question");
             double timer = synthesize(beat.timerCue(), directory.resolve("speech-timer-" + i + ".wav"), timerDirection() + operatorSuffix(operatorDirection), profile, "timer");
             double reveal = synthesize(beat.revealExplanation(), directory.resolve("speech-reveal-" + i + ".wav"), revealDirection() + operatorSuffix(operatorDirection), profile, "reveal");
+            requireSlot(question, StudioRenderer.VISUAL_SETUP_SECONDS, "question", i + 1);
+            requireSlot(timer, StudioRenderer.VISUAL_TIMER_CUE_SECONDS, "timer cue", i + 1);
+            requireSlot(reveal, StudioRenderer.VISUAL_REVEAL_SECONDS, "answer", i + 1);
             tracks.add(new EpisodeSpeech.PuzzleSpeech(i + 1, question, timer, reveal));
         }
         EpisodeSpeech speech = new EpisodeSpeech(profile.model(), profile.voice(), tracks);
@@ -194,7 +197,14 @@ class SpeechAi {
         return "Energetic adult male timer cue for the same family-challenge host. Match the question narration's bright, high-leaning natural pitch, clear volume, and one steady medium pace. Launch crisply but never rush. Say it exactly once; do not count, add sound effects, insert a dramatic pause, or add extra words.";
     }
     private static String revealDirection() {
-        return "Bright, expressive adult male family-challenge host for children ages 6 to 18 and parents. Continue the exact same bright, high-leaning natural pitch, clear volume, and one steady medium pace as the question. Make the answer a cheerful aha moment, warmly celebrate the discovery, then explain the proof with lively emphasis without speeding up. Leave natural spaces between ideas. No baby talk, flat delivery, classroom tone, timid voice, or exaggerated game-show shouting. Speak exactly the supplied words.";
+        return "Bright, expressive adult male family-challenge host for children ages 6 to 18 and parents. Continue the exact same bright, high-leaning natural pitch, clear volume, and one steady medium pace as the question. Make the answer a cheerful aha moment, warmly celebrate the discovery, then explain the proof with lively emphasis without speeding up. Use only normal, brief sentence pauses; never add a dramatic pause. No baby talk, flat delivery, classroom tone, timid voice, or exaggerated game-show shouting. Speak exactly the supplied words.";
+    }
+
+    private static void requireSlot(double seconds, double slotSeconds, String slot, int puzzleNumber) {
+        EpisodeSpec.require(seconds <= slotSeconds + .02,
+            "Puzzle " + puzzleNumber + " " + slot + " voice is " + String.format(Locale.ROOT, "%.2f", seconds)
+                + " seconds, but its fixed slot is " + String.format(Locale.ROOT, "%.1f", slotSeconds)
+                + " seconds. Regenerate narration with a shorter " + slot + " line, then generate voice again.");
     }
     private static String operatorSuffix(String direction) {
         return direction == null || direction.isBlank() ? "" : " Additional operator direction: " + direction.trim();
