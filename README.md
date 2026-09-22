@@ -112,6 +112,12 @@ Run tests with `mvn test` (headless graphics enabled for macOS).
 
 ## Start locally
 
+### One-click Mac start and stop
+
+In Finder, double-click [Start Brain Booster Lab.command](Start%20Brain%20Booster%20Lab.command) to start Docker Desktop, the persistent PostgreSQL database, rebuild the latest code, start the local portal, and open `http://localhost:8090/`.
+
+Double-click [Stop Brain Booster Lab.command](Stop%20Brain%20Booster%20Lab.command) to stop the portal, stop PostgreSQL, and quit Docker Desktop. It deliberately does **not** remove the named `postgres-data` volume or anything under `outputs/`, so saved episodes, assets, and database records survive the next start. Stopping Docker Desktop also stops any other Docker workloads running on this Mac.
+
 ```bash
 cp .env.example .env
 # Edit .env with your local values. The application loads this ignored local file at startup.
