@@ -13,7 +13,7 @@ import org.springframework.stereotype.Component;
 @Component
 class StudioRenderer {
     /** Bump when a saved video no longer represents the current production contract. */
-    static final String RENDER_VERSION = "voice-timed-puzzle-segments-1";
+    static final String RENDER_VERSION = "voice-timed-puzzle-segments-2";
     static final String LAYOUT_VERSION = "reasoning-2";
     static String layoutVersion(EpisodeSpec spec) {
         return spec.puzzles().stream().anyMatch(p -> "visual".equals(p.kind())) ? "kids-thumbnail-10" : LAYOUT_VERSION;
@@ -24,6 +24,13 @@ class StudioRenderer {
     static final double VISUAL_TIMER_CUE_SECONDS = 3.5;
     static final int VISUAL_QUESTION_SECONDS = 8;
     static final int VISUAL_REVEAL_SECONDS = 8;
+    /**
+     * All clips are normalized before concat.  OpenAI speech WAVs can be 96 kHz,
+     * whereas local cue/tick WAVs are generated here; mixing their timestamps in
+     * the concat demuxer caused the eight tick sounds to be compressed on some
+     * players.
+     */
+    static final int AUDIO_SAMPLE_RATE = 48_000;
     static final Color INK = new Color(13, 25, 38), PAPER = new Color(250, 247, 236), GOLD = new Color(255, 209, 96);
     private final String ffmpeg;
     StudioRenderer(@Value("${brain-booster.render.ffmpeg-path:ffmpeg}") String ffmpeg) { this.ffmpeg = ffmpeg; }
@@ -84,7 +91,7 @@ class StudioRenderer {
     Path render(EpisodeSpec spec, Path dir, boolean draft, EpisodeSpeech speech, String channelName) throws Exception {
         if (speech != null) {
             speech.validate(spec);
-            if (!Files.isRegularFile(dir.resolve("puzzle-audio-0.m4a"))) writeSpeechTrack(spec, speech, dir);
+            writeSpeechTrack(spec, speech, dir);
         }
         String prefix = draft ? "preview" : "final";
         var segments = new ArrayList<RenderedSegment>();
@@ -104,7 +111,7 @@ class StudioRenderer {
         Path result = dir.resolve(prefix + ".mp4"), pending = dir.resolve(prefix + ".pending.mp4");
         var command = new ArrayList<String>(List.of(ffmpeg, "-y", "-v", "warning", "-f", "concat", "-safe", "0", "-i", manifest.toString(),
             "-c:v", "libx264", "-preset", "fast", "-crf", "19"));
-        if (speech != null) command.addAll(List.of("-c:a", "aac", "-b:a", "192k")); else command.add("-an");
+        if (speech != null) command.addAll(List.of("-c:a", "aac", "-b:a", "192k", "-ar", Integer.toString(AUDIO_SAMPLE_RATE), "-ac", "1")); else command.add("-an");
         command.addAll(List.of("-movflags", "+faststart", pending.toString()));
         runVideo(command, dir.resolve(prefix + "-ffmpeg.log"));
         Files.move(pending, result, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
@@ -169,7 +176,7 @@ class StudioRenderer {
         var command = new ArrayList<String>(List.of(ffmpeg, "-y", "-v", "warning", "-f", "concat", "-safe", "0", "-i", frames.resolve("frames.txt").toString()));
         if (audio != null) command.addAll(List.of("-i", audio.toString()));
         command.addAll(List.of("-vf", "fps=30,format=yuv420p", "-c:v", "libx264", "-preset", "fast", "-crf", "19", "-t", Double.toString(durationSeconds)));
-        if (audio != null) command.addAll(List.of("-map", "0:v:0", "-map", "1:a:0", "-c:a", "aac", "-b:a", "192k", "-shortest")); else command.add("-an");
+        if (audio != null) command.addAll(List.of("-map", "0:v:0", "-map", "1:a:0", "-c:a", "aac", "-b:a", "192k", "-ar", Integer.toString(AUDIO_SAMPLE_RATE), "-ac", "1", "-shortest")); else command.add("-an");
         command.addAll(List.of("-movflags", "+faststart", pending.toString()));
         runVideo(command, log);
     }
@@ -183,31 +190,32 @@ class StudioRenderer {
         Files.createDirectories(dir);
         StringBuilder episodeManifest = new StringBuilder();
         for (int i = 0; i < spec.puzzles().size(); i++) {
-            requireAudio(dir, "speech-question-" + i + ".wav");
-            requireAudio(dir, "speech-timer-" + i + ".wav");
-            requireAudio(dir, "speech-reveal-" + i + ".wav");
+            Path question = normalizeForAssembly(requireAudio(dir, "speech-question-" + i + ".wav"), dir);
+            Path timer = normalizeForAssembly(requireAudio(dir, "speech-timer-" + i + ".wav"), dir);
+            Path reveal = normalizeForAssembly(requireAudio(dir, "speech-reveal-" + i + ".wav"), dir);
             StringBuilder puzzleManifest = new StringBuilder();
-            appendAudio(puzzleManifest, "speech-question-" + i + ".wav");
-            appendAudio(puzzleManifest, "speech-timer-" + i + ".wav");
+            appendAudio(puzzleManifest, question.getFileName().toString());
+            appendAudio(puzzleManifest, timer.getFileName().toString());
             String ticks = "speech-ticks-" + i + ".wav";
             writeTicking(dir.resolve(ticks), dir);
             appendAudio(puzzleManifest, ticks);
-            appendAudio(puzzleManifest, "speech-reveal-" + i + ".wav");
+            appendAudio(puzzleManifest, reveal.getFileName().toString());
             Path puzzleList = dir.resolve("puzzle-audio-" + i + ".txt"), puzzlePending = dir.resolve("puzzle-audio-" + i + ".pending.m4a"), puzzle = dir.resolve("puzzle-audio-" + i + ".m4a");
             Files.writeString(puzzleList, puzzleManifest);
-            runFfmpeg(List.of(ffmpeg, "-y", "-v", "warning", "-f", "concat", "-safe", "0", "-i", puzzleList.toString(), "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", puzzlePending.toString()), dir);
+            runFfmpeg(List.of(ffmpeg, "-y", "-v", "warning", "-f", "concat", "-safe", "0", "-i", puzzleList.toString(), "-c:a", "aac", "-b:a", "192k", "-ar", Integer.toString(AUDIO_SAMPLE_RATE), "-ac", "1", "-movflags", "+faststart", puzzlePending.toString()), dir);
             Files.move(puzzlePending, puzzle, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
             appendAudio(episodeManifest, puzzle.getFileName().toString());
             if (i < spec.puzzles().size() - 1) {
                 String transition = "speech-transition-" + i + ".wav";
                 writeSilence(dir.resolve(transition), PuzzleMotion.TRANSITION_TICKS / (double) PuzzleMotion.FPS, dir);
-                appendAudio(episodeManifest, transition);
+                Path transitionAac = encodeAac(dir.resolve(transition), dir.resolve("speech-transition-" + i + ".m4a"), dir);
+                appendAudio(episodeManifest, transitionAac.getFileName().toString());
             }
         }
         Files.writeString(dir.resolve("speech-audio.txt"), episodeManifest);
         Path pending = dir.resolve("speech.pending.m4a");
         runFfmpeg(List.of(ffmpeg, "-y", "-v", "warning", "-f", "concat", "-safe", "0", "-i",
-            dir.resolve("speech-audio.txt").toString(), "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", pending.toString()), dir);
+            dir.resolve("speech-audio.txt").toString(), "-c:a", "aac", "-b:a", "192k", "-ar", Integer.toString(AUDIO_SAMPLE_RATE), "-ac", "1", "-movflags", "+faststart", pending.toString()), dir);
         Files.move(pending, dir.resolve("speech.m4a"), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
         Files.writeString(dir.resolve("ai-voice-disclosure.txt"),
             "This episode uses an AI-generated OpenAI text-to-speech voice. Include this disclosure in the YouTube description before publishing.\n");
@@ -217,20 +225,38 @@ class StudioRenderer {
         manifest.append("file '").append(filename).append("'\n");
     }
 
-    private static void requireAudio(Path dir, String filename) {
-        if (!Files.isRegularFile(dir.resolve(filename)))
+    private static Path requireAudio(Path dir, String filename) {
+        Path audio = dir.resolve(filename);
+        if (!Files.isRegularFile(audio))
             throw new IllegalStateException("Missing local speech clip " + filename + "; regenerate the AI voice");
+        return audio;
+    }
+
+    /** Produces timestamp-compatible PCM clips for the concat demuxer. */
+    private Path normalizeForAssembly(Path source, Path dir) throws Exception {
+        Path target = source.resolveSibling(source.getFileName() + ".assembly.wav");
+        Path pending = target.resolveSibling(target.getFileName() + ".pending.wav");
+        runFfmpeg(List.of(ffmpeg, "-y", "-v", "warning", "-i", source.toString(), "-ar", Integer.toString(AUDIO_SAMPLE_RATE), "-ac", "1", "-c:a", "pcm_s16le", pending.toString()), dir);
+        Files.move(pending, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        return target;
+    }
+
+    private Path encodeAac(Path source, Path target, Path dir) throws Exception {
+        Path pending = target.resolveSibling(target.getFileName() + ".pending.m4a");
+        runFfmpeg(List.of(ffmpeg, "-y", "-v", "warning", "-i", source.toString(), "-c:a", "aac", "-b:a", "192k", "-ar", Integer.toString(AUDIO_SAMPLE_RATE), "-ac", "1", "-movflags", "+faststart", pending.toString()), dir);
+        Files.move(pending, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        return target;
     }
 
     private void writeTicking(Path target, Path dir) throws Exception {
         // One gentle tick for every second of the exact on-screen thinking period.
         runFfmpeg(List.of(ffmpeg, "-y", "-v", "warning", "-f", "lavfi", "-i",
-            "aevalsrc=if(lt(mod(t\\,1)\\,.055)\\,.13*sin(2*PI*1200*t)\\,0):s=24000:d=" + VISUAL_QUESTION_SECONDS,
+            "aevalsrc=if(lt(mod(t\\,1)\\,.055)\\,.13*sin(2*PI*1200*t)\\,0):s=" + AUDIO_SAMPLE_RATE + ":d=" + VISUAL_QUESTION_SECONDS,
             "-c:a", "pcm_s16le", target.toString()), dir);
     }
 
     private void writeSilence(Path target, double seconds, Path dir) throws Exception {
-        runFfmpeg(List.of(ffmpeg, "-y", "-v", "warning", "-f", "lavfi", "-i", "anullsrc=r=24000:cl=mono",
+        runFfmpeg(List.of(ffmpeg, "-y", "-v", "warning", "-f", "lavfi", "-i", "anullsrc=r=" + AUDIO_SAMPLE_RATE + ":cl=mono",
             "-t", String.format(java.util.Locale.ROOT, "%.6f", seconds), "-c:a", "pcm_s16le", target.toString()), dir);
     }
 

@@ -59,9 +59,11 @@ class StudioRenderIntegrationTest {
         double[] question = {2.0, 2.5, 3.0}, cue = {.5, .75, 1.0}, reveal = {3.0, 3.5, 4.0};
         var tracks = new ArrayList<EpisodeSpeech.PuzzleSpeech>();
         for (int i = 0; i < spec.puzzles().size(); i++) {
-            writeSilentWav(directory.resolve("speech-question-" + i + ".wav"), question[i]);
-            writeSilentWav(directory.resolve("speech-timer-" + i + ".wav"), cue[i]);
-            writeSilentWav(directory.resolve("speech-reveal-" + i + ".wav"), reveal[i]);
+            // OpenAI currently returns 96 kHz WAVs. This guards against mixing
+            // those with locally generated ticks and corrupting their timestamps.
+            writeSilentWav(directory.resolve("speech-question-" + i + ".wav"), question[i], 96_000);
+            writeSilentWav(directory.resolve("speech-timer-" + i + ".wav"), cue[i], 96_000);
+            writeSilentWav(directory.resolve("speech-reveal-" + i + ".wav"), reveal[i], 96_000);
             tracks.add(new EpisodeSpeech.PuzzleSpeech(i + 1, question[i], cue[i], reveal[i]));
         }
         EpisodeSpeech speech = new EpisodeSpeech("gpt-4o-mini-tts", "cedar", tracks);
@@ -70,6 +72,8 @@ class StudioRenderIntegrationTest {
         for (int i = 0; i < tracks.size(); i++)
             assertThat(duration(directory.resolve("preview-puzzle-" + (i + 1) + ".mp4")))
                 .isCloseTo(question[i] + cue[i] + StudioRenderer.VISUAL_QUESTION_SECONDS + reveal[i], within(.08));
+        for (int i = 0; i < tracks.size(); i++)
+            assertThat(audioSampleRate(directory.resolve("puzzle-audio-" + i + ".m4a"))).isEqualTo(StudioRenderer.AUDIO_SAMPLE_RATE);
         double expected = 0;
         for (int i = 0; i < tracks.size(); i++) expected += question[i] + cue[i] + StudioRenderer.VISUAL_QUESTION_SECONDS + reveal[i];
         expected += (tracks.size() - 1) * (double) PuzzleMotion.TRANSITION_TICKS / PuzzleMotion.FPS;
@@ -90,9 +94,20 @@ class StudioRenderIntegrationTest {
         return Double.parseDouble(output);
     }
 
+    private static int audioSampleRate(Path audio) throws Exception {
+        var probe = new ProcessBuilder("ffprobe", "-v", "error", "-select_streams", "a:0", "-show_entries", "stream=sample_rate", "-of", "default=nokey=1:noprint_wrappers=1", audio.toString()).start();
+        String output = new String(probe.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8).trim();
+        assertThat(probe.waitFor()).isZero();
+        return Integer.parseInt(output);
+    }
+
     /** Minimal deterministic PCM WAV fixture: no Speech API and no external encoder needed. */
     private static void writeSilentWav(Path target, double seconds) throws Exception {
-        int sampleRate = 24_000, samples = (int) Math.round(sampleRate * seconds), dataSize = samples * 2;
+        writeSilentWav(target, seconds, 24_000);
+    }
+
+    private static void writeSilentWav(Path target, double seconds, int sampleRate) throws Exception {
+        int samples = (int) Math.round(sampleRate * seconds), dataSize = samples * 2;
         ByteBuffer wav = ByteBuffer.allocate(44 + dataSize).order(ByteOrder.LITTLE_ENDIAN);
         wav.put("RIFF".getBytes(java.nio.charset.StandardCharsets.US_ASCII)).putInt(36 + dataSize).put("WAVEfmt ".getBytes(java.nio.charset.StandardCharsets.US_ASCII));
         wav.putInt(16).putShort((short) 1).putShort((short) 1).putInt(sampleRate).putInt(sampleRate * 2).putShort((short) 2).putShort((short) 16);
