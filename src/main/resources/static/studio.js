@@ -49,7 +49,7 @@ function firstOpenStep(e) {
 function retryDefinition(e) {
   if (!['FAILED', 'INTERRUPTED'].includes(e?.status)) return null;
   if (e.failedStage === 'SPEAKING' && /speech duration is outside its safe range|voice is .*fixed slot|voice clip is longer than its fixed/i.test(e.lastError || ''))
-    return [3, 'Regenerate shorter narration', 'An existing voice clip is longer than its fixed video slot. Create a shorter narration script first; this clears the partial clips and uses only your configured text-model credits, not speech credits.', 'narration'];
+    return [5, 'Retry voice generation', 'The updated renderer fits small natural voice overages locally to the fixed video clock. Retry the full voice pass with your saved narration; this uses speech credits.', 'speech'];
   const recovered = {
     GENERATING:[0, 'Retry puzzle generation', 'Send a concise recovery request. No prior puzzle content was saved.', 'generate'],
     REVIEWING:[1, 'Retry puzzle review', 'Run the independent fairness review again using the saved puzzles.', 'review'],
@@ -450,7 +450,7 @@ function stagePane(e) {
 }
 function workflow(e) {
   const shell = el('article', null, 'workflow'); const header = el('header', null, 'workflow-header'); const meta = el('div', null, 'episode-meta'); meta.append(el('span', settings(e).channelName, 'channel-badge'), el('span', e.status.replaceAll('_', ' ').toLowerCase(), `status-badge ${isWorking(e) ? 'working' : e.finalReady ? 'complete' : 'ready'}`)); header.append(el('h1', title(e)), meta); shell.append(header);
-  if (e.lastError) { const error = el('div', null, 'error'); const timingIssue = e.failedStage === 'SPEAKING' && /speech duration is outside its safe range|voice is .*fixed slot|voice clip is longer than its fixed/i.test(e.lastError); error.append(el('strong', 'This step needs attention. '), document.createTextNode(timingIssue ? `${e.lastError} Go to Narration and generate a shorter script, then return to Voice. The partial clips are retained locally but will not be used.` : `${e.lastError} Update the stage direction or production profile, then run the unfinished step again.`)); shell.append(error); }
+  if (e.lastError) { const error = el('div', null, 'error'); const timingIssue = e.failedStage === 'SPEAKING' && /speech duration is outside its safe range|voice is .*fixed slot|voice clip is longer than its fixed/i.test(e.lastError); error.append(el('strong', 'This step needs attention. '), document.createTextNode(timingIssue ? `${e.lastError} The updated renderer now fits small natural voice overages locally. Refresh, then use Retry voice generation; the partial clips are retained locally but will not be used.` : `${e.lastError} Update the stage direction or production profile, then run the unfinished step again.`)); shell.append(error); }
   shell.append(buildSettings(e), buildNavigation(e), stagePane(e), stageOutput(e, step));
   const footer = el('div', null, 'episode-footer'); addButton(footer, 'Start another episode', () => { selected = ''; location.hash = ''; episode = null; fillSettings(settings(e)); by('brief').value = e.brief; draw(); }, 'text-button'); shell.append(footer); return shell;
 }

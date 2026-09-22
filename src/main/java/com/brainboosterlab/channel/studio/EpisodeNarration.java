@@ -19,7 +19,7 @@ public record EpisodeNarration(String episodeOpening, List<PuzzleNarration> puzz
             // The generator keeps future scripts compact enough for the fixed production speech slots.
             line(beat.questionLeadIn(), 20, 25, "Question lead-in");
             line(beat.timerCue(), 5, 7, "Timer cue");
-            // New drafts target 15–18 words. Keep compatible saved scripts readable; the measured
+            // New drafts target 13–16 words. Keep compatible saved scripts readable; the measured
             // local audio duration remains the final, strict eight-second production gate.
             line(beat.revealExplanation(), 15, 25, "Reveal explanation");
             forbidChoiceLabels(beat, spec.puzzles().get(i));

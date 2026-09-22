@@ -683,7 +683,7 @@ class StudioService {
         require(view(e).artworkReady(), "Prepare all artwork before generating speech");
         require(narrationGroundingPasses(e, spec), "Ground narration against the completed artwork before generating speech");
         var narration = narration(e, spec);
-        boolean recoverExisting = "FAILED".equals(e.status) && existingSpeechClips(id);
+        boolean recoverExisting = "FAILED".equals(e.status) && existingSpeechClips(id) && !speechTimingFailure(e.lastError);
         stage(e, "SPEAKING");
         try {
             var production = settings(e);
@@ -931,6 +931,11 @@ class StudioService {
     private boolean speechReady(StudioEpisode e, EpisodeSpec spec) {
         try { speech(e, spec); return Files.isRegularFile(directory(e.id).resolve("speech.m4a")); }
         catch (Exception ignored) { return false; }
+    }
+    private static boolean speechTimingFailure(String error) {
+        return error != null && (error.contains("speech duration is outside its safe range")
+            || error.contains("voice is ") && error.contains("fixed")
+            || error.contains("voice clip is longer than its fixed"));
     }
     private void save(StudioEpisode e) { e.version = repository.saveAndFlush(e).version; }
     private void stage(StudioEpisode e, String status) { e.status = status; e.lastError = null; e.failedStage = null; save(e); }

@@ -201,10 +201,10 @@ class SpeechAi {
     }
 
     private static void requireSlot(double seconds, double slotSeconds, String slot, int puzzleNumber) {
-        EpisodeSpec.require(seconds <= slotSeconds + .02,
+        EpisodeSpec.require(seconds <= StudioRenderer.sourceDurationLimit(slotSeconds),
             "Puzzle " + puzzleNumber + " " + slot + " voice is " + String.format(Locale.ROOT, "%.2f", seconds)
-                + " seconds, but its fixed slot is " + String.format(Locale.ROOT, "%.1f", slotSeconds)
-                + " seconds. Regenerate narration with a shorter " + slot + " line, then generate voice again.");
+                + " seconds, which is too long for its fixed " + String.format(Locale.ROOT, "%.1f", slotSeconds)
+                + "-second slot. Regenerate narration with a shorter " + slot + " line, then generate voice again.");
     }
     private static String operatorSuffix(String direction) {
         return direction == null || direction.isBlank() ? "" : " Additional operator direction: " + direction.trim();

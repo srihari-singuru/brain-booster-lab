@@ -18,9 +18,9 @@ public record EpisodeSpeech(String model, String voice, List<PuzzleSpeech> puzzl
             PuzzleSpeech track = puzzles.get(i);
             EpisodeSpec.require(track != null && track.puzzleNumber() == i + 1,
                 "Speech puzzle numbers must be consecutive and in order");
-            duration(track.questionSeconds(), "Question speech", 2, StudioRenderer.VISUAL_SETUP_SECONDS + .02);
-            duration(track.timerCueSeconds(), "Timer cue speech", .25, StudioRenderer.VISUAL_TIMER_CUE_SECONDS + .02);
-            duration(track.revealSeconds(), "Reveal speech", 2, StudioRenderer.VISUAL_REVEAL_SECONDS + .02);
+            duration(track.questionSeconds(), "Question speech", 2, StudioRenderer.sourceDurationLimit(StudioRenderer.VISUAL_SETUP_SECONDS));
+            duration(track.timerCueSeconds(), "Timer cue speech", .25, StudioRenderer.sourceDurationLimit(StudioRenderer.VISUAL_TIMER_CUE_SECONDS));
+            duration(track.revealSeconds(), "Reveal speech", 2, StudioRenderer.sourceDurationLimit(StudioRenderer.VISUAL_REVEAL_SECONDS));
         }
     }
 

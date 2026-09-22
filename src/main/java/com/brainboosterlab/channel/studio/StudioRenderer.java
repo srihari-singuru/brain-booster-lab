@@ -22,6 +22,8 @@ class StudioRenderer {
     static final double VISUAL_TIMER_CUE_SECONDS = 3.5;
     static final int VISUAL_QUESTION_SECONDS = 8;
     static final int VISUAL_REVEAL_SECONDS = 8;
+    /** A small local correction keeps expressive TTS within a fixed video slot without a noticeable pace change. */
+    static final double MAX_SOURCE_SPEECH_OVERRUN_RATIO = 1.10;
     static final Color INK = new Color(13, 25, 38), PAPER = new Color(250, 247, 236), GOLD = new Color(255, 209, 96);
     private final String ffmpeg;
     StudioRenderer(@Value("${brain-booster.render.ffmpeg-path:ffmpeg}") String ffmpeg) { this.ffmpeg = ffmpeg; }
@@ -194,9 +196,15 @@ class StudioRenderer {
     }
 
     private void appendPaddedAudio(StringBuilder manifest, Path dir, String filename, double actualSeconds, double slotSeconds, String slot) throws Exception {
-        EpisodeSpec.require(actualSeconds <= slotSeconds + .02,
-            "The " + slot + " voice clip is longer than its fixed " + String.format(java.util.Locale.ROOT, "%.1f", slotSeconds)
+        EpisodeSpec.require(actualSeconds <= sourceDurationLimit(slotSeconds),
+            "The " + slot + " voice clip is too long for a fixed " + String.format(java.util.Locale.ROOT, "%.1f", slotSeconds)
                 + "-second slot. Regenerate narration with fewer words, then generate voice again.");
+        if (actualSeconds > slotSeconds + .02) {
+            String fitted = filename.replace(".wav", "-fit.wav");
+            fitAudio(dir.resolve(filename), dir.resolve(fitted), actualSeconds / slotSeconds, dir);
+            appendAudio(manifest, fitted);
+            return;
+        }
         appendAudio(manifest, filename);
         double padding = Math.max(0, slotSeconds - actualSeconds);
         if (padding < .01) return;
@@ -224,6 +232,15 @@ class StudioRenderer {
     private void writeSilence(Path target, double seconds, Path dir) throws Exception {
         runFfmpeg(List.of(ffmpeg, "-y", "-v", "warning", "-f", "lavfi", "-i", "anullsrc=r=24000:cl=mono",
             "-t", String.format(java.util.Locale.ROOT, "%.6f", seconds), "-c:a", "pcm_s16le", target.toString()), dir);
+    }
+
+    private void fitAudio(Path source, Path target, double tempo, Path dir) throws Exception {
+        runFfmpeg(List.of(ffmpeg, "-y", "-v", "warning", "-i", source.toString(), "-filter:a",
+            "atempo=" + String.format(java.util.Locale.ROOT, "%.6f", tempo), "-c:a", "pcm_s16le", target.toString()), dir);
+    }
+
+    static double sourceDurationLimit(double slotSeconds) {
+        return slotSeconds * MAX_SOURCE_SPEECH_OVERRUN_RATIO + .02;
     }
 
     private void runFfmpeg(List<String> command, Path dir) throws Exception {
