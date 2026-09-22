@@ -23,7 +23,7 @@ class StudioRenderer {
     static final int VISUAL_QUESTION_SECONDS = 8;
     static final int VISUAL_REVEAL_SECONDS = 8;
     /** A small local correction keeps expressive TTS within a fixed video slot without a noticeable pace change. */
-    static final double MAX_SOURCE_SPEECH_OVERRUN_RATIO = 1.10;
+    static final double MAX_SOURCE_SPEECH_OVERRUN_RATIO = 1.125;
     static final Color INK = new Color(13, 25, 38), PAPER = new Color(250, 247, 236), GOLD = new Color(255, 209, 96);
     private final String ffmpeg;
     StudioRenderer(@Value("${brain-booster.render.ffmpeg-path:ffmpeg}") String ffmpeg) { this.ffmpeg = ffmpeg; }
