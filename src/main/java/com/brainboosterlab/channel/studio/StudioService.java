@@ -668,8 +668,7 @@ class StudioService {
             }
             renderer.previews(spec, dir, settings(e).channelName());
             // New reveal treatment must be watched again; source art, narration and voice stay intact.
-            Files.deleteIfExists(dir.resolve("preview.mp4"));
-            Files.deleteIfExists(dir.resolve("final.mp4"));
+            invalidateRenders(dir);
             stage(e, "ART_REVIEW");
             return view(e);
         } catch (Exception ex) { return failed(e, ex); }
@@ -683,7 +682,9 @@ class StudioService {
         require(view(e).artworkReady(), "Prepare all artwork before generating speech");
         require(narrationGroundingPasses(e, spec), "Ground narration against the completed artwork before generating speech");
         var narration = narration(e, spec);
-        boolean recoverExisting = "FAILED".equals(e.status) && existingSpeechClips(id) && !speechTimingFailure(e.lastError);
+        // If every local clip exists, a retry can recover their measured timings without
+        // spending on the Speech API again. The renderer now follows those timings directly.
+        boolean recoverExisting = "FAILED".equals(e.status) && existingSpeechClips(id);
         stage(e, "SPEAKING");
         try {
             var production = settings(e);
@@ -691,10 +692,9 @@ class StudioService {
             var draft = recoverExisting ? speaker.recoverExisting(spec, directory(id)) : speaker.speak(spec, narration, directory(id), profile, stageInstructions(e).forAction("speech"));
             draft.speech().validate(spec);
             renderer.writeSpeechTrack(spec, draft.speech(), directory(id));
-            // A new voice track changes the fixed-clock composition. Never leave an older preview
+            // A new voice track changes the local timing plan. Never leave an older preview
             // available as though it matched the regenerated local audio.
-            Files.deleteIfExists(directory(id).resolve("preview.mp4"));
-            Files.deleteIfExists(directory(id).resolve("final.mp4"));
+            invalidateRenders(directory(id));
             e.speechJson = json.writeValueAsString(draft.speech());
             e.speechModel = draft.speech().model(); e.speechVoice = draft.speech().voice();
             stage(e, "ART_REVIEW");
@@ -748,7 +748,7 @@ class StudioService {
 
     Path media(UUID id, String filename) {
         find(id);
-        require(filename.matches("(?:art|question|reveal)-[0-9]+\\.png|(?:provenance|visual-review)-[0-9]+\\.json|(?:preview|final)\\.mp4|narration\\.txt|speech\\.m4a|ai-voice-disclosure\\.txt"),
+        require(filename.matches("(?:art|question|reveal)-[0-9]+\\.png|(?:provenance|visual-review)-[0-9]+\\.json|(?:preview|final)(?:-puzzle-[0-9]+)?\\.mp4|narration\\.txt|speech\\.m4a|ai-voice-disclosure\\.txt"),
             "Unknown media asset");
         Path path = directory(id).resolve(filename);
         if (!Files.isRegularFile(path)) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Asset is not ready");
@@ -936,10 +936,18 @@ class StudioService {
         try { speech(e, spec); return Files.isRegularFile(directory(e.id).resolve("speech.m4a")); }
         catch (Exception ignored) { return false; }
     }
-    private static boolean speechTimingFailure(String error) {
-        return error != null && (error.contains("speech duration is outside its safe range")
-            || error.contains("voice is ") && error.contains("fixed")
-            || error.contains("voice clip is longer than its fixed"));
+    /** Derived renders are disposable. Their sources—artwork, narration and WAV clips—are retained. */
+    private static void invalidateRenders(Path dir) throws java.io.IOException {
+        for (String prefix : List.of("preview", "final")) {
+            Files.deleteIfExists(dir.resolve(prefix + ".mp4"));
+            Files.deleteIfExists(dir.resolve(prefix + "-render-version.txt"));
+        }
+    }
+    private static boolean renderReady(Path dir, String prefix) {
+        try {
+            return Files.isRegularFile(dir.resolve(prefix + ".mp4"))
+                && StudioRenderer.RENDER_VERSION.equals(Files.readString(dir.resolve(prefix + "-render-version.txt")).trim());
+        } catch (Exception ignored) { return false; }
     }
     private void save(StudioEpisode e) { e.version = repository.saveAndFlush(e).version; }
     private void stage(StudioEpisode e, String status) { e.status = status; e.lastError = null; e.failedStage = null; save(e); }
@@ -988,7 +996,7 @@ class StudioService {
             e.narrationReviewJson == null ? null : json.readValue(e.narrationReviewJson, NarrationAi.Review.class),
             e.narrationGroundingJson == null ? null : json.readValue(e.narrationGroundingJson, NarrationGrounding.class), speech, e.lastError, e.failedStage,
             e.scriptModel, e.responseId, e.narrationModel, e.narrationResponseId, e.narrationGroundingModel, e.speechModel, e.speechVoice, settings(e), stageInstructions(e),
-            e.approvedAt, ready, reviews, Files.isRegularFile(dir.resolve("preview.mp4")), Files.isRegularFile(dir.resolve("final.mp4")), speechReady, e.puzzleReviewOverridden,
+            e.approvedAt, ready, reviews, renderReady(dir, "preview"), renderReady(dir, "final"), speechReady, e.puzzleReviewOverridden,
             e.artworkSelectionFinalized, e.narrationGroundingOverridden);
     }
     private View safeView(StudioEpisode episode) {

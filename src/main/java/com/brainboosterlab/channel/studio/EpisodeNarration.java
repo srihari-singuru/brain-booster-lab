@@ -16,11 +16,10 @@ public record EpisodeNarration(String episodeOpening, List<PuzzleNarration> puzz
             PuzzleNarration beat = puzzles.get(i);
             EpisodeSpec.require(beat != null && beat.puzzleNumber() == i + 1,
                 "Narration puzzle numbers must be consecutive and in order");
-            // The generator keeps future scripts compact enough for the fixed production speech slots.
+            // Natural voice duration now controls question and answer visuals; the timer remains separate.
             line(beat.questionLeadIn(), 20, 25, "Question lead-in");
             line(beat.timerCue(), 5, 7, "Timer cue");
-            // New drafts target 13–16 words. Keep compatible saved scripts readable; the measured
-            // local audio duration remains the final, strict eight-second production gate.
+            // The measured local audio duration controls the reveal visual rather than a fixed slot.
             line(beat.revealExplanation(), 15, 25, "Reveal explanation");
             forbidChoiceLabels(beat, spec.puzzles().get(i));
         }

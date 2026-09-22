@@ -48,8 +48,8 @@ function firstOpenStep(e) {
 }
 function retryDefinition(e) {
   if (!['FAILED', 'INTERRUPTED'].includes(e?.status)) return null;
-  if (e.failedStage === 'SPEAKING' && /speech duration is outside its safe range|voice is .*fixed slot|voice clip is longer than its fixed/i.test(e.lastError || ''))
-    return [5, 'Retry voice generation', 'The updated renderer fits small natural voice overages locally to the fixed video clock. Retry the full voice pass with your saved narration; this uses speech credits.', 'speech'];
+  if (e.failedStage === 'SPEAKING' && /speech duration is outside its safe range/i.test(e.lastError || ''))
+    return [5, 'Recover local voice clips', 'The renderer now follows each measured voice clip. Retry to recover the saved local clips without another Speech API request.', 'speech'];
   const recovered = {
     GENERATING:[0, 'Retry puzzle generation', 'Send a concise recovery request. No prior puzzle content was saved.', 'generate'],
     REVIEWING:[1, 'Retry puzzle review', 'Run the independent fairness review again using the saved puzzles.', 'review'],
@@ -119,8 +119,8 @@ function actionFor(e, index) {
     reviewGatePassed(e) && !e.artworkReady && ['Generate artwork', 'Create clean illustrations, then check candidate order and the clue before the blind review. A detected mismatch may use one repair image credit for that puzzle.', 'artwork', true],
     e.artworkReady && e.artworkSelectionFinalized && [e.narration ? 'Regenerate narration' : 'Generate narration', e.narration ? 'Write a fresh story-led narration for these selected puzzles. Existing voice clips will be cleared.' : 'Write the story-led narration for these selected puzzles only.', 'narration', false],
     e.narration && e.artworkReady && !groundingGatePassed(e) && ['Ground narration', 'Verify every narrated clue against the finished images.', 'ground-narration', false],
-    groundingGatePassed(e) && [e.speechReady ? 'Regenerate voice' : 'Generate voice', e.speechReady ? 'Replace the saved voice clips using the fixed production clock. This uses speech credits.' : 'Create local voice clips using the saved voice settings. This uses speech credits.', 'speech', true],
-    e.speechReady && [e.previewReady ? 'Re-render preview' : 'Render preview', e.previewReady ? 'Rebuild the local review video from the current voice, artwork, and fixed production clock. This does not use OpenAI credits.' : 'Create a reviewable video before approval.', 'preview', false],
+    groundingGatePassed(e) && [e.speechReady ? 'Regenerate voice' : 'Generate voice', e.speechReady ? 'Replace the saved voice clips. Each puzzle will use its own measured narration timing. This uses speech credits.' : 'Create local voice clips using the saved voice settings. This uses speech credits.', 'speech', true],
+    e.speechReady && [e.previewReady ? 'Re-render preview' : 'Render preview', e.previewReady ? 'Rebuild individually voice-timed puzzle clips, then merge them with silent transitions. This does not use OpenAI credits.' : 'Create individually voice-timed puzzle clips and a reviewable merged video.', 'preview', false],
     e.previewReady && !e.approvedAt && ['Approve episode', 'Lock this reviewed episode for final rendering.', 'approve', false],
     e.approvedAt && !e.finalReady && ['Render final video', 'Create the downloadable final video.', 'render', false]
   ];
@@ -404,14 +404,18 @@ function voiceOutput(e, pane) {
   outputTitle(pane, 'Generated result', 'Voice clips');
   if (!e.speechReady) return emptyOutput(pane, 'The generated voice track will appear here.');
   const audio = document.createElement('audio'); audio.controls = true; audio.src = media(e, 'speech.m4a'); pane.append(audio, el('p', `Voice: ${e.speechVoice || settings(e).speechVoice} · speed ${settings(e).speechSpeed}×`, 'media-caption'));
-  pane.append(el('p', 'Fixed production clock per puzzle: 10.0s question · 3.5s cue · 8.0s countdown · 8.0s answer · 2.5s transition.', 'track-line'));
-  e.speech?.puzzles?.forEach(track => pane.append(el('p', `Puzzle ${track.puzzleNumber}: source speech ${Number(track.questionSeconds).toFixed(1)}s · cue ${Number(track.timerSeconds).toFixed(1)}s · answer ${Number(track.revealSeconds).toFixed(1)}s; local silence fills each fixed slot.`, 'track-line')));
+  pane.append(el('p', 'Each puzzle is rendered from its own measured question, cue, and answer clips. The countdown remains exactly 8.0 seconds; the 2.5-second transition has no voice.', 'track-line'));
+  e.speech?.puzzles?.forEach(track => pane.append(el('p', `Puzzle ${track.puzzleNumber}: question ${Number(track.questionSeconds).toFixed(1)}s · cue ${Number(track.timerSeconds).toFixed(1)}s · answer ${Number(track.revealSeconds).toFixed(1)}s.`, 'track-line')));
 }
 function videoOutput(e, pane, kind) {
   const final = kind === 'final'; outputTitle(pane, 'Generated result', final ? 'Final video' : 'Preview video');
   const ready = final ? e.finalReady : e.previewReady; if (!ready) return emptyOutput(pane, final ? 'The approved final video will appear here.' : 'The reviewable preview video will appear here.');
   const video = document.createElement('video'); video.controls = true; video.preload = 'metadata'; video.src = media(e, final ? 'final.mp4' : 'preview.mp4'); pane.append(video);
   const download = el('a', final ? 'Download final video' : 'Open preview video', 'secondary link-button'); download.href = video.src; download.target = '_blank'; pane.append(download);
+  if (!final && e.speech?.puzzles?.length) {
+    pane.append(el('h4', 'Individual puzzle clips'));
+    e.speech.puzzles.forEach(track => { const clip = document.createElement('video'); clip.controls = true; clip.preload = 'metadata'; clip.src = media(e, `preview-puzzle-${track.puzzleNumber}.mp4`); pane.append(el('p', `Puzzle ${track.puzzleNumber}`, 'output-kicker'), clip); });
+  }
 }
 function approvalOutput(e, pane) {
   outputTitle(pane, 'Generated result', 'Approval');
@@ -450,7 +454,7 @@ function stagePane(e) {
 }
 function workflow(e) {
   const shell = el('article', null, 'workflow'); const header = el('header', null, 'workflow-header'); const meta = el('div', null, 'episode-meta'); meta.append(el('span', settings(e).channelName, 'channel-badge'), el('span', e.status.replaceAll('_', ' ').toLowerCase(), `status-badge ${isWorking(e) ? 'working' : e.finalReady ? 'complete' : 'ready'}`)); header.append(el('h1', title(e)), meta); shell.append(header);
-  if (e.lastError) { const error = el('div', null, 'error'); const timingIssue = e.failedStage === 'SPEAKING' && /speech duration is outside its safe range|voice is .*fixed slot|voice clip is longer than its fixed/i.test(e.lastError); error.append(el('strong', 'This step needs attention. '), document.createTextNode(timingIssue ? `${e.lastError} The updated renderer now fits small natural voice overages locally. Refresh, then use Retry voice generation; the partial clips are retained locally but will not be used.` : `${e.lastError} Update the stage direction or production profile, then run the unfinished step again.`)); shell.append(error); }
+  if (e.lastError) { const error = el('div', null, 'error'); const timingIssue = e.failedStage === 'SPEAKING' && /speech duration is outside its safe range/i.test(e.lastError); error.append(el('strong', 'This step needs attention. '), document.createTextNode(timingIssue ? `${e.lastError} The updated renderer follows measured speech duration per puzzle. Refresh, then recover the saved local voice clips; no new Speech API request is needed.` : `${e.lastError} Update the stage direction or production profile, then run the unfinished step again.`)); shell.append(error); }
   shell.append(buildSettings(e), buildNavigation(e), stagePane(e), stageOutput(e, step));
   const footer = el('div', null, 'episode-footer'); addButton(footer, 'Start another episode', () => { selected = ''; location.hash = ''; episode = null; fillSettings(settings(e)); by('brief').value = e.brief; draw(); }, 'text-button'); shell.append(footer); return shell;
 }

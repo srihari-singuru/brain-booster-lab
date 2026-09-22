@@ -12,18 +12,18 @@ import org.springframework.stereotype.Component;
 
 @Component
 class StudioRenderer {
+    /** Bump when a saved video no longer represents the current production contract. */
+    static final String RENDER_VERSION = "voice-timed-puzzle-segments-1";
     static final String LAYOUT_VERSION = "reasoning-2";
     static String layoutVersion(EpisodeSpec spec) {
         return spec.puzzles().stream().anyMatch(p -> "visual".equals(p.kind())) ? "kids-thumbnail-10" : LAYOUT_VERSION;
     }
     static final int WIDTH = 1920, HEIGHT = 1080;
-    /** Every visual puzzle follows one fixed audio/video clock; speech is padded locally, never time-stretched. */
+    /** The countdown is fixed; question, cue, and reveal visuals take their measured local voice duration. */
     static final int VISUAL_SETUP_SECONDS = 10;
     static final double VISUAL_TIMER_CUE_SECONDS = 3.5;
     static final int VISUAL_QUESTION_SECONDS = 8;
     static final int VISUAL_REVEAL_SECONDS = 8;
-    /** A small local correction keeps expressive TTS within a fixed video slot without a noticeable pace change. */
-    static final double MAX_SOURCE_SPEECH_OVERRUN_RATIO = 1.125;
     static final Color INK = new Color(13, 25, 38), PAPER = new Color(250, 247, 236), GOLD = new Color(255, 209, 96);
     private final String ffmpeg;
     StudioRenderer(@Value("${brain-booster.render.ffmpeg-path:ffmpeg}") String ffmpeg) { this.ffmpeg = ffmpeg; }
@@ -53,12 +53,12 @@ class StudioRenderer {
             var puzzle = spec.puzzles().get(i);
             var beat = narration.puzzles().get(i);
             script.append("PUZZLE ").append(i + 1).append(" — ").append(puzzle.title()).append("\n")
-                .append("QUESTION LEAD-IN — TARGET ").append(VISUAL_SETUP_SECONDS).append(" SECONDS\n")
+                .append("QUESTION LEAD-IN — VOICE-TIMED\n")
                 .append(beat.questionLeadIn()).append("\n")
-                .append("TIMER CUE — FIXED ").append(String.format(java.util.Locale.ROOT, "%.1f", VISUAL_TIMER_CUE_SECONDS)).append(" SECONDS; THE TIMER SHOWS EIGHT, THEN THE FIXED ").append(VISUAL_QUESTION_SECONDS).append("-SECOND COUNTDOWN STARTS\n")
+                .append("TIMER CUE — VOICE-TIMED; THE TIMER HOLDS AT EIGHT, THEN THE FIXED ").append(VISUAL_QUESTION_SECONDS).append("-SECOND COUNTDOWN STARTS\n")
                 .append(beat.timerCue()).append("\n")
                 .append("SILENT THINKING — EXACTLY ").append(VISUAL_QUESTION_SECONDS).append(" SECONDS\n")
-                .append("REVEAL EXPLANATION — TARGET ").append(VISUAL_REVEAL_SECONDS).append(" SECONDS\n")
+                .append("REVEAL EXPLANATION — VOICE-TIMED\n")
                 .append(beat.revealExplanation()).append("\n\n");
         }
         script.append("EPISODE CLOSING — FUTURE OUTRO\n").append(narration.episodeClosing()).append('\n');
@@ -77,116 +77,134 @@ class StudioRenderer {
             "Wonderful thinking today. Keep noticing the little details, and come back for another cheerful puzzle.");
     }
 
-    Path render(EpisodeSpec spec, Path dir, boolean draft) throws Exception {
-        return render(spec, dir, draft, null, "BRAIN BOOSTER LAB");
+    Path render(EpisodeSpec spec, Path dir, boolean draft) throws Exception { return render(spec, dir, draft, null, "BRAIN BOOSTER LAB"); }
+    Path render(EpisodeSpec spec, Path dir, boolean draft, EpisodeSpeech speech) throws Exception { return render(spec, dir, draft, speech, "BRAIN BOOSTER LAB"); }
+
+    /** Renders every puzzle as its own voice-timed review clip, then joins clips with silent transitions. */
+    Path render(EpisodeSpec spec, Path dir, boolean draft, EpisodeSpeech speech, String channelName) throws Exception {
+        if (speech != null) {
+            speech.validate(spec);
+            if (!Files.isRegularFile(dir.resolve("puzzle-audio-0.m4a"))) writeSpeechTrack(spec, speech, dir);
+        }
+        String prefix = draft ? "preview" : "final";
+        var segments = new ArrayList<RenderedSegment>();
+        for (int i = 0; i < spec.puzzles().size(); i++)
+            segments.add(renderPuzzle(spec, dir, draft, speech, channelName, prefix, i));
+
+        Path manifest = dir.resolve(prefix + "-segments.txt");
+        StringBuilder files = new StringBuilder();
+        for (int i = 0; i < segments.size(); i++) {
+            appendAudio(files, segments.get(i).video().getFileName().toString());
+            if (i < segments.size() - 1) {
+                Path transition = renderTransition(dir, prefix, i, segments.get(i).last(), segments.get(i + 1).first(), speech != null);
+                appendAudio(files, transition.getFileName().toString());
+            }
+        }
+        Files.writeString(manifest, files);
+        Path result = dir.resolve(prefix + ".mp4"), pending = dir.resolve(prefix + ".pending.mp4");
+        var command = new ArrayList<String>(List.of(ffmpeg, "-y", "-v", "warning", "-f", "concat", "-safe", "0", "-i", manifest.toString(),
+            "-c:v", "libx264", "-preset", "fast", "-crf", "19"));
+        if (speech != null) command.addAll(List.of("-c:a", "aac", "-b:a", "192k")); else command.add("-an");
+        command.addAll(List.of("-movflags", "+faststart", pending.toString()));
+        runVideo(command, dir.resolve(prefix + "-ffmpeg.log"));
+        Files.move(pending, result, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        Files.writeString(dir.resolve(prefix + "-render-version.txt"), RENDER_VERSION);
+        return result;
     }
 
-    Path render(EpisodeSpec spec, Path dir, boolean draft, EpisodeSpeech speech) throws Exception { return render(spec, dir, draft, speech, "BRAIN BOOSTER LAB"); }
-    Path render(EpisodeSpec spec, Path dir, boolean draft, EpisodeSpeech speech, String channelName) throws Exception {
-        if (speech != null) speech.validate(spec);
-        Path frames = dir.resolve(draft ? "draft-frames" : "final-frames");
-        Files.createDirectories(frames);
-        var sequence = new FrameSequence(frames);
-        BufferedImage previous = null;
-        for (int i = 0; i < spec.puzzles().size(); i++) {
-            var puzzle = spec.puzzles().get(i);
-            var art = readArt(dir, i);
-            var overlay = SceneOverlay.read(dir, i, puzzle);
-            boolean visual = "visual".equals(puzzle.kind());
-            if (i > 0 && visual && "visual".equals(spec.puzzles().get(i - 1).kind())) {
-                var next = composed(puzzle, art, i, "setup", 0, draft, overlay, 1.2, channelName, spec.puzzles().size());
-                for (int tick = 1; tick <= PuzzleMotion.TRANSITION_TICKS; tick++)
-                    sequence.add(PuzzleMotion.transition(previous, next, (double)tick / PuzzleMotion.TRANSITION_TICKS), 1);
-            }
-            for (String phase : List.of("setup", "cue", "question", "reveal")) {
-                int seconds = phase.equals("setup") ? (visual ? VISUAL_SETUP_SECONDS : 8)
-                    : phase.equals("cue") ? (visual ? (int) Math.round(VISUAL_TIMER_CUE_SECONDS) : 0)
-                    : phase.equals("reveal") ? (visual ? VISUAL_REVEAL_SECONDS : 12)
-                    : (visual ? VISUAL_QUESTION_SECONDS : puzzle.thinkSeconds());
-                if (seconds <= 0) continue;
-                if (visual) {
-                    int totalTicks = phase.equals("cue") ? (int) Math.round(VISUAL_TIMER_CUE_SECONDS * PuzzleMotion.FPS)
-                        : seconds * PuzzleMotion.FPS;
-                    if (phase.equals("reveal")) {
-                        int animatedTicks = Math.min(PuzzleMotion.REVEAL_TICKS, totalTicks);
-                        for (int tick = 0; tick < animatedTicks; tick++) {
-                            previous = composed(puzzle, art, i, phase, 0, draft, overlay, (double)tick / PuzzleMotion.FPS, channelName, spec.puzzles().size());
-                            sequence.add(previous, 1);
-                        }
-                        for (int tick = animatedTicks; tick < totalTicks; tick += 15) {
-                            int duration = Math.min(15, totalTicks - tick);
-                            previous = composed(puzzle, art, i, phase, 0, draft, overlay, (double)tick / PuzzleMotion.FPS, channelName, spec.puzzles().size());
-                            sequence.add(previous, duration);
-                        }
-                    } else {
-                        for (int tick = 0; tick < totalTicks; tick += 15) {
-                            int duration = Math.min(15, totalTicks - tick);
-                            int countdown = phase.equals("cue") ? VISUAL_QUESTION_SECONDS
-                                : phase.equals("question") ? Math.max(1, VISUAL_QUESTION_SECONDS - tick / PuzzleMotion.FPS) : 0;
-                            previous = composed(puzzle, art, i, phase, countdown, draft, overlay, (double)tick / PuzzleMotion.FPS, channelName, spec.puzzles().size());
-                            sequence.add(previous, duration);
-                        }
-                    }
-                    continue;
+    private RenderedSegment renderPuzzle(EpisodeSpec spec, Path dir, boolean draft, EpisodeSpeech speech, String channelName, String prefix, int index) throws Exception {
+        var puzzle = spec.puzzles().get(index); var art = readArt(dir, index); var overlay = SceneOverlay.read(dir, index, puzzle);
+        boolean visual = "visual".equals(puzzle.kind());
+        EpisodeSpeech.PuzzleSpeech track = speech == null ? null : speech.puzzles().get(index);
+        double setup = track == null ? (visual ? VISUAL_SETUP_SECONDS : 8) : track.questionSeconds();
+        double cue = track == null ? (visual ? VISUAL_TIMER_CUE_SECONDS : 0) : track.timerCueSeconds();
+        double thinking = visual ? VISUAL_QUESTION_SECONDS : puzzle.thinkSeconds();
+        double reveal = track == null ? (visual ? VISUAL_REVEAL_SECONDS : 12) : track.revealSeconds();
+        Path frames = dir.resolve(prefix + "-puzzle-" + (index + 1) + "-frames"); Files.createDirectories(frames);
+        var sequence = new FrameSequence(frames); BufferedImage first = null, last = null;
+        for (var phase : List.of(new TimedPhase("setup", setup), new TimedPhase("cue", cue), new TimedPhase("question", thinking), new TimedPhase("reveal", reveal))) {
+            if (phase.seconds() <= 0) continue;
+            int totalTicks = ticks(phase.seconds());
+            if (visual && phase.name().equals("reveal")) {
+                int animated = Math.min(PuzzleMotion.REVEAL_TICKS, totalTicks);
+                for (int tick = 0; tick < animated; tick++) {
+                    last = composed(puzzle, art, index, phase.name(), 0, draft, overlay, (double) tick / PuzzleMotion.FPS, channelName, spec.puzzles().size());
+                    if (first == null) first = last; sequence.add(last, 1);
                 }
-                int framesInPhase = phase.equals("question") ? seconds : 1;
-                for (int t = 0; t < framesInPhase; t++) {
-                    previous = composed(puzzle, art, i, phase, phase.equals("question") ? seconds - t : 0, draft, overlay, 1.2, channelName, spec.puzzles().size());
-                    int duration = framesInPhase == 1 ? seconds : 1;
-                    sequence.add(previous, duration * PuzzleMotion.FPS);
+                for (int tick = animated; tick < totalTicks; tick += 15) {
+                    last = composed(puzzle, art, index, phase.name(), 0, draft, overlay, (double) tick / PuzzleMotion.FPS, channelName, spec.puzzles().size());
+                    if (first == null) first = last; sequence.add(last, Math.min(15, totalTicks - tick));
                 }
+            } else if (visual) {
+                for (int tick = 0; tick < totalTicks; tick += 15) {
+                    int countdown = phase.name().equals("cue") ? VISUAL_QUESTION_SECONDS : phase.name().equals("question") ? Math.max(1, VISUAL_QUESTION_SECONDS - tick / PuzzleMotion.FPS) : 0;
+                    last = composed(puzzle, art, index, phase.name(), countdown, draft, overlay, (double) tick / PuzzleMotion.FPS, channelName, spec.puzzles().size());
+                    if (first == null) first = last; sequence.add(last, Math.min(15, totalTicks - tick));
+                }
+            } else {
+                last = composed(puzzle, art, index, phase.name(), phase.name().equals("question") ? (int) Math.ceil(phase.seconds()) : 0, draft, overlay, 1.2, channelName, spec.puzzles().size());
+                if (first == null) first = last; sequence.add(last, totalTicks);
             }
         }
         sequence.finish();
-        String filename = draft ? "preview.mp4" : "final.mp4";
-        Path pending = dir.resolve(draft ? "preview.pending.mp4" : "final.pending.mp4");
-        // The concat manifest contains only our generated filenames, never user-supplied paths.
-        // safe=0 permits per-file framerate options, preserving exact 30fps animation timing.
-        var command = new ArrayList<String>(List.of(ffmpeg, "-y", "-v", "warning", "-f", "concat", "-safe", "0", "-i",
-            frames.resolve("frames.txt").toString()));
-        if (speech != null) command.addAll(List.of("-i", dir.resolve("speech.m4a").toString()));
-        command.addAll(List.of("-vf", "fps=30,format=yuv420p", "-c:v", "libx264", "-preset", "fast", "-crf", "19",
-            "-t", Double.toString(sequence.ticks / 30.0)));
-        if (speech != null) command.addAll(List.of("-map", "0:v:0", "-map", "1:a:0", "-c:a", "aac", "-b:a", "192k", "-shortest"));
-        else command.add("-an");
-        command.addAll(List.of("-movflags", "+faststart", pending.toString()));
-        var process = new ProcessBuilder(command).redirectErrorStream(true).redirectOutput(dir.resolve("ffmpeg.log").toFile()).start();
-        try {
-            if (!process.waitFor(10, TimeUnit.MINUTES)) {
-                process.destroyForcibly();
-                throw new IllegalStateException("FFmpeg timed out; retained frames can be inspected");
-            }
-        } catch (InterruptedException e) {
-            process.destroyForcibly(); Thread.currentThread().interrupt(); throw e;
-        }
-        if (process.exitValue() != 0) throw new IllegalStateException("FFmpeg failed; inspect the local ffmpeg.log");
-        Path result = dir.resolve(filename);
+        Path result = dir.resolve(prefix + "-puzzle-" + (index + 1) + ".mp4"), pending = dir.resolve(prefix + "-puzzle-" + (index + 1) + ".pending.mp4");
+        Path audio = speech == null ? null : dir.resolve("puzzle-audio-" + index + ".m4a");
+        encodeFrames(frames, audio, sequence.ticks / (double) PuzzleMotion.FPS, pending, dir.resolve(prefix + "-puzzle-" + (index + 1) + "-ffmpeg.log"));
+        Files.move(pending, result, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        return new RenderedSegment(result, first, last);
+    }
+
+    private Path renderTransition(Path dir, String prefix, int index, BufferedImage before, BufferedImage after, boolean withAudio) throws Exception {
+        Path frames = dir.resolve(prefix + "-transition-" + (index + 1) + "-frames"); Files.createDirectories(frames);
+        var sequence = new FrameSequence(frames);
+        for (int tick = 1; tick <= PuzzleMotion.TRANSITION_TICKS; tick++) sequence.add(PuzzleMotion.transition(before, after, (double) tick / PuzzleMotion.TRANSITION_TICKS), 1);
+        sequence.finish();
+        Path result = dir.resolve(prefix + "-transition-" + (index + 1) + ".mp4"), pending = dir.resolve(prefix + "-transition-" + (index + 1) + ".pending.mp4");
+        encodeFrames(frames, withAudio ? dir.resolve("speech-transition-" + index + ".wav") : null, sequence.ticks / (double) PuzzleMotion.FPS, pending, dir.resolve(prefix + "-transition-" + (index + 1) + "-ffmpeg.log"));
         Files.move(pending, result, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
         return result;
     }
 
+    private void encodeFrames(Path frames, Path audio, double durationSeconds, Path pending, Path log) throws Exception {
+        var command = new ArrayList<String>(List.of(ffmpeg, "-y", "-v", "warning", "-f", "concat", "-safe", "0", "-i", frames.resolve("frames.txt").toString()));
+        if (audio != null) command.addAll(List.of("-i", audio.toString()));
+        command.addAll(List.of("-vf", "fps=30,format=yuv420p", "-c:v", "libx264", "-preset", "fast", "-crf", "19", "-t", Double.toString(durationSeconds)));
+        if (audio != null) command.addAll(List.of("-map", "0:v:0", "-map", "1:a:0", "-c:a", "aac", "-b:a", "192k", "-shortest")); else command.add("-an");
+        command.addAll(List.of("-movflags", "+faststart", pending.toString()));
+        runVideo(command, log);
+    }
+
+    private static int ticks(double seconds) { return Math.max(1, (int) Math.round(seconds * PuzzleMotion.FPS)); }
+    private record TimedPhase(String name, double seconds) {}
+    private record RenderedSegment(Path video, BufferedImage first, BufferedImage last) {}
+
     void writeSpeechTrack(EpisodeSpec spec, EpisodeSpeech speech, Path dir) throws Exception {
         speech.validate(spec);
         Files.createDirectories(dir);
-        StringBuilder manifest = new StringBuilder();
+        StringBuilder episodeManifest = new StringBuilder();
         for (int i = 0; i < spec.puzzles().size(); i++) {
-            var track = speech.puzzles().get(i);
             requireAudio(dir, "speech-question-" + i + ".wav");
             requireAudio(dir, "speech-timer-" + i + ".wav");
             requireAudio(dir, "speech-reveal-" + i + ".wav");
-            appendPaddedAudio(manifest, dir, "speech-question-" + i + ".wav", track.questionSeconds(), VISUAL_SETUP_SECONDS, "question");
-            appendPaddedAudio(manifest, dir, "speech-timer-" + i + ".wav", track.timerCueSeconds(), VISUAL_TIMER_CUE_SECONDS, "timer cue");
+            StringBuilder puzzleManifest = new StringBuilder();
+            appendAudio(puzzleManifest, "speech-question-" + i + ".wav");
+            appendAudio(puzzleManifest, "speech-timer-" + i + ".wav");
             String ticks = "speech-ticks-" + i + ".wav";
             writeTicking(dir.resolve(ticks), dir);
-            appendAudio(manifest, ticks);
-            appendPaddedAudio(manifest, dir, "speech-reveal-" + i + ".wav", track.revealSeconds(), VISUAL_REVEAL_SECONDS, "answer");
+            appendAudio(puzzleManifest, ticks);
+            appendAudio(puzzleManifest, "speech-reveal-" + i + ".wav");
+            Path puzzleList = dir.resolve("puzzle-audio-" + i + ".txt"), puzzlePending = dir.resolve("puzzle-audio-" + i + ".pending.m4a"), puzzle = dir.resolve("puzzle-audio-" + i + ".m4a");
+            Files.writeString(puzzleList, puzzleManifest);
+            runFfmpeg(List.of(ffmpeg, "-y", "-v", "warning", "-f", "concat", "-safe", "0", "-i", puzzleList.toString(), "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", puzzlePending.toString()), dir);
+            Files.move(puzzlePending, puzzle, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            appendAudio(episodeManifest, puzzle.getFileName().toString());
             if (i < spec.puzzles().size() - 1) {
                 String transition = "speech-transition-" + i + ".wav";
                 writeSilence(dir.resolve(transition), PuzzleMotion.TRANSITION_TICKS / (double) PuzzleMotion.FPS, dir);
-                appendAudio(manifest, transition);
+                appendAudio(episodeManifest, transition);
             }
         }
-        Files.writeString(dir.resolve("speech-audio.txt"), manifest);
+        Files.writeString(dir.resolve("speech-audio.txt"), episodeManifest);
         Path pending = dir.resolve("speech.pending.m4a");
         runFfmpeg(List.of(ffmpeg, "-y", "-v", "warning", "-f", "concat", "-safe", "0", "-i",
             dir.resolve("speech-audio.txt").toString(), "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", pending.toString()), dir);
@@ -195,26 +213,8 @@ class StudioRenderer {
             "This episode uses an AI-generated OpenAI text-to-speech voice. Include this disclosure in the YouTube description before publishing.\n");
     }
 
-    private void appendPaddedAudio(StringBuilder manifest, Path dir, String filename, double actualSeconds, double slotSeconds, String slot) throws Exception {
-        EpisodeSpec.require(actualSeconds <= sourceDurationLimit(slotSeconds),
-            "The " + slot + " voice clip is too long for a fixed " + String.format(java.util.Locale.ROOT, "%.1f", slotSeconds)
-                + "-second slot. Regenerate narration with fewer words, then generate voice again.");
-        if (actualSeconds > slotSeconds + .02) {
-            String fitted = filename.replace(".wav", "-fit.wav");
-            fitAudio(dir.resolve(filename), dir.resolve(fitted), actualSeconds / slotSeconds, dir);
-            appendAudio(manifest, fitted);
-            return;
-        }
-        appendAudio(manifest, filename);
-        double padding = Math.max(0, slotSeconds - actualSeconds);
-        if (padding < .01) return;
-        String silence = filename.replace(".wav", "-padding.wav");
-        writeSilence(dir.resolve(silence), padding, dir);
-        appendAudio(manifest, silence);
-    }
-
     private static void appendAudio(StringBuilder manifest, String filename) {
-        manifest.append("file ").append(filename).append("\n");
+        manifest.append("file '").append(filename).append("'\n");
     }
 
     private static void requireAudio(Path dir, String filename) {
@@ -234,15 +234,6 @@ class StudioRenderer {
             "-t", String.format(java.util.Locale.ROOT, "%.6f", seconds), "-c:a", "pcm_s16le", target.toString()), dir);
     }
 
-    private void fitAudio(Path source, Path target, double tempo, Path dir) throws Exception {
-        runFfmpeg(List.of(ffmpeg, "-y", "-v", "warning", "-i", source.toString(), "-filter:a",
-            "atempo=" + String.format(java.util.Locale.ROOT, "%.6f", tempo), "-c:a", "pcm_s16le", target.toString()), dir);
-    }
-
-    static double sourceDurationLimit(double slotSeconds) {
-        return slotSeconds * MAX_SOURCE_SPEECH_OVERRUN_RATIO + .02;
-    }
-
     private void runFfmpeg(List<String> command, Path dir) throws Exception {
         var process = new ProcessBuilder(command).redirectErrorStream(true).redirectOutput(dir.resolve("speech-ffmpeg.log").toFile()).start();
         try {
@@ -251,6 +242,16 @@ class StudioRenderer {
             process.destroyForcibly(); Thread.currentThread().interrupt(); throw ex;
         }
         if (process.exitValue() != 0) throw new IllegalStateException("FFmpeg could not assemble the local speech track; inspect speech-ffmpeg.log");
+    }
+
+    private void runVideo(List<String> command, Path log) throws Exception {
+        var process = new ProcessBuilder(command).redirectErrorStream(true).redirectOutput(log.toFile()).start();
+        try {
+            if (!process.waitFor(10, TimeUnit.MINUTES)) { process.destroyForcibly(); throw new IllegalStateException("FFmpeg timed out; retained frames can be inspected"); }
+        } catch (InterruptedException ex) {
+            process.destroyForcibly(); Thread.currentThread().interrupt(); throw ex;
+        }
+        if (process.exitValue() != 0) throw new IllegalStateException("FFmpeg failed; inspect the local FFmpeg log");
     }
 
     private BufferedImage readArt(Path dir, int i) throws Exception {
