@@ -1,5 +1,5 @@
 #!/bin/zsh
-# Shared local-control helpers for the two double-clickable Brain Booster Lab scripts.
+# Shared local-control helpers for the two double-clickable Puzzle Pop scripts.
 # This file is sourced by the .command launchers; do not run it directly.
 
 if [[ -z "${BRAIN_BOOSTER_PROJECT_DIR:-}" ]]; then
@@ -11,12 +11,12 @@ typeset -gr BB_PORT=8090
 typeset -gr BB_RUNTIME_DIR="$BRAIN_BOOSTER_PROJECT_DIR/outputs/local-runtime"
 typeset -gr BB_PID_FILE="$BB_RUNTIME_DIR/portal.pid"
 typeset -gr BB_LOG_FILE="$BB_RUNTIME_DIR/portal.log"
-typeset -gr BB_JAR="$BRAIN_BOOSTER_PROJECT_DIR/target/brain-booster-lab-0.0.1-SNAPSHOT.jar"
+typeset -gr BB_JAR="$BRAIN_BOOSTER_PROJECT_DIR/target/puzzle-pop-0.0.1-SNAPSHOT.jar"
 
 bb_alert() {
   local message="$1"
   print -- "$message"
-  /usr/bin/osascript -e 'on run argv' -e 'display alert "Brain Booster Lab" message (item 1 of argv)' -e 'end run' -- "$message" >/dev/null 2>&1 || true
+  /usr/bin/osascript -e 'on run argv' -e 'display alert "Puzzle Pop" message (item 1 of argv)' -e 'end run' -- "$message" >/dev/null 2>&1 || true
 }
 
 bb_prepare_path() {
@@ -37,7 +37,7 @@ bb_select_java_25() {
     unset JAVA_HOME
   fi
   if ! java -version 2>&1 | /usr/bin/grep -Eq 'version "25([."]|[0-9])'; then
-    bb_alert "Java 25 is required to build Brain Booster Lab, but this launcher could not find it. Install Java 25, then run Start Brain Booster Lab again."
+    bb_alert "Java 25 is required to build Puzzle Pop, but this launcher could not find it. Install Java 25, then run Start Puzzle Pop again."
     return 1
   fi
 }
@@ -45,7 +45,7 @@ bb_select_java_25() {
 bb_is_brain_booster_process() {
   local pid="$1" command
   command=$(ps -p "$pid" -o command= 2>/dev/null) || return 1
-  [[ "$command" == *"brain-booster-lab-0.0.1-SNAPSHOT.jar"* ]]
+  [[ "$command" == *"puzzle-pop-0.0.1-SNAPSHOT.jar"* ]]
 }
 
 bb_wait_for_exit() {
@@ -62,7 +62,7 @@ bb_stop_portal() {
   if [[ -f "$BB_PID_FILE" ]]; then
     pid=$(<"$BB_PID_FILE")
     if [[ "$pid" == <-> ]] && bb_is_brain_booster_process "$pid"; then
-      print -- "Stopping Brain Booster Lab portal (PID $pid)…"
+      print -- "Stopping Puzzle Pop portal (PID $pid)…"
       kill -TERM "$pid" 2>/dev/null || true
       bb_wait_for_exit "$pid" || { print -- "Portal did not stop gracefully; ending its process."; kill -KILL "$pid" 2>/dev/null || true; }
     fi
@@ -72,7 +72,7 @@ bb_stop_portal() {
   port_pid=$(lsof -t -nP -iTCP:"$BB_PORT" -sTCP:LISTEN 2>/dev/null | head -1) || true
   if [[ -n "$port_pid" ]]; then
     if bb_is_brain_booster_process "$port_pid"; then
-      print -- "Stopping remaining Brain Booster Lab process on port $BB_PORT…"
+      print -- "Stopping remaining Puzzle Pop process on port $BB_PORT…"
       kill -TERM "$port_pid" 2>/dev/null || true
       bb_wait_for_exit "$port_pid" || kill -KILL "$port_pid" 2>/dev/null || true
     else
@@ -103,7 +103,7 @@ bb_docker_ready() {
 bb_start_docker() {
   if bb_docker_ready; then return 0; fi
   if ! open -Ra Docker >/dev/null 2>&1; then
-    bb_alert "Docker Desktop is not installed. Install and open Docker Desktop, then run Start Brain Booster Lab again."
+    bb_alert "Docker Desktop is not installed. Install and open Docker Desktop, then run Start Puzzle Pop again."
     return 1
   fi
   print -- "Starting Docker Desktop…"
@@ -112,7 +112,7 @@ bb_start_docker() {
     bb_docker_ready && return 0
     sleep 2
   done
-  bb_alert "Docker Desktop did not become ready within three minutes. Open Docker Desktop, wait for it to finish starting, then run Start Brain Booster Lab again."
+  bb_alert "Docker Desktop did not become ready within three minutes. Open Docker Desktop, wait for it to finish starting, then run Start Puzzle Pop again."
   return 1
 }
 
@@ -124,7 +124,7 @@ bb_start_database() {
     docker compose exec -T postgres pg_isready -U brain_booster -d brain_booster_lab >/dev/null 2>&1 && return 0
     sleep 1
   done
-  bb_alert "PostgreSQL did not become ready. Open Docker Desktop to check the brain-booster-lab-postgres container, then try again."
+  bb_alert "PostgreSQL did not become ready. Open Docker Desktop to check the puzzle-pop-postgres container, then try again."
   return 1
 }
 
@@ -148,6 +148,6 @@ bb_wait_for_portal() {
   done
   print -u2 -- "The portal did not become ready. Recent server log:"
   tail -40 "$BB_LOG_FILE" 2>/dev/null || true
-  bb_alert "Brain Booster Lab did not start. The technical details are in outputs/local-runtime/portal.log."
+  bb_alert "Puzzle Pop did not start. The technical details are in outputs/local-runtime/portal.log."
   return 1
 }

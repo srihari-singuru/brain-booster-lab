@@ -14,7 +14,7 @@ class MockPuzzleScriptGenerator implements PuzzleScriptGenerator {
                 + "PUZZLE: " + (job.getPrompt() == null ? "Find the hidden object in the scene." : job.getPrompt()) + "\n"
                 + "PAUSE: Give viewers ten seconds to solve it.\n"
                 + "ANSWER: Reveal the clue and explain the observation that solves it.\n"
-                + "CTA: Comment your score and try the next Brain Booster Lab challenge!";
+                + "CTA: Comment your score and try the next Puzzle Pop challenge!";
         return new GeneratedScript(script, "mock", "mock-" + job.getId(), null, null);
     }
 }

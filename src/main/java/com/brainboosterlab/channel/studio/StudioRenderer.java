@@ -35,7 +35,7 @@ class StudioRenderer {
     private final String ffmpeg;
     StudioRenderer(@Value("${brain-booster.render.ffmpeg-path:ffmpeg}") String ffmpeg) { this.ffmpeg = ffmpeg; }
 
-    void previews(EpisodeSpec spec, Path dir) throws Exception { previews(spec, dir, "BRAIN BOOSTER LAB"); }
+    void previews(EpisodeSpec spec, Path dir) throws Exception { previews(spec, dir, "PUZZLE POP"); }
     void previews(EpisodeSpec spec, Path dir, String channelName) throws Exception {
         for (int i = 0; i < spec.puzzles().size(); i++) {
             BufferedImage art = readArt(dir, i);
@@ -49,7 +49,7 @@ class StudioRenderer {
         if (!Files.exists(dir.resolve("narration.txt"))) writeNarration(spec, fallbackNarration(spec), dir, channelName);
     }
 
-    void writeNarration(EpisodeSpec spec, EpisodeNarration narration, Path dir) throws Exception { writeNarration(spec, narration, dir, "BRAIN BOOSTER LAB"); }
+    void writeNarration(EpisodeSpec spec, EpisodeNarration narration, Path dir) throws Exception { writeNarration(spec, narration, dir, "PUZZLE POP"); }
     void writeNarration(EpisodeSpec spec, EpisodeNarration narration, Path dir, String channelName) throws Exception {
         narration.validate(spec);
         Files.createDirectories(dir);
@@ -80,12 +80,12 @@ class StudioRenderer {
                 "Take eight seconds to choose your answer.",
                 "The answer is OPTION " + p.answerId() + ". Follow the clearest clue in the scene; it shows why this choice fits the puzzle and the others do not.");
         }).toList();
-        return new EpisodeNarration("Welcome to Brain Booster Lab, where every small clue can spark a brilliant idea.", beats,
+        return new EpisodeNarration("Welcome to Puzzle Pop, where every small clue can spark a brilliant idea.", beats,
             "Wonderful thinking today. Keep noticing the little details, and come back for another cheerful puzzle.");
     }
 
-    Path render(EpisodeSpec spec, Path dir, boolean draft) throws Exception { return render(spec, dir, draft, null, "BRAIN BOOSTER LAB"); }
-    Path render(EpisodeSpec spec, Path dir, boolean draft, EpisodeSpeech speech) throws Exception { return render(spec, dir, draft, speech, "BRAIN BOOSTER LAB"); }
+    Path render(EpisodeSpec spec, Path dir, boolean draft) throws Exception { return render(spec, dir, draft, null, "PUZZLE POP"); }
+    Path render(EpisodeSpec spec, Path dir, boolean draft, EpisodeSpeech speech) throws Exception { return render(spec, dir, draft, speech, "PUZZLE POP"); }
 
     /** Renders every puzzle as its own voice-timed review clip, then joins clips with silent transitions. */
     Path render(EpisodeSpec spec, Path dir, boolean draft, EpisodeSpeech speech, String channelName) throws Exception {
@@ -338,7 +338,7 @@ class StudioRenderer {
             // The lower background extends off-canvas; the complete original remains in the studio.
             g.drawImage(art, fit.x, fit.y + 160, fit.width, fit.height, null);
             panel(g, 0, 0, WIDTH, 124, new Color(13, 25, 38, 242));
-            text(g, "BRAIN BOOSTER LAB  /  CASE " + (index + 1), 38, 16, 1400, 36, 25, GOLD, Font.BOLD);
+            text(g, "PUZZLE POP  /  CASE " + (index + 1), 38, 16, 1400, 36, 25, GOLD, Font.BOLD);
             text(g, p.question(), 38, 54, 1720, 58, 45, PAPER, Font.BOLD);
             if (draft) text(g, "DRAFT", 1740, 16, 145, 36, 25, GOLD, Font.BOLD);
 
@@ -360,19 +360,22 @@ class StudioRenderer {
                     panel(g, 1764, 725, 116, 102, new Color(13, 25, 38, 235));
                     text(g, String.valueOf(countdown), 1784, 741, 85, 74, 57, GOLD, Font.BOLD);
                 }
-                for (int c = 0; c < 3; c++) {
+                int choiceCount = p.choices().size();
+                int choiceGap = 14;
+                int choiceWidth = (WIDTH - 64 - (choiceCount - 1) * choiceGap) / choiceCount;
+                for (int c = 0; c < choiceCount; c++) {
                     var choice = p.choices().get(c);
-                    int x = 32 + c * 628;
+                    int x = 32 + c * (choiceWidth + choiceGap);
                     boolean correct = phase.equals("reveal") && choice.id().equals(p.answerId());
-                    panel(g, x, 850, 600, 188, correct ? new Color(255, 209, 96, 250) : new Color(13, 25, 38, 242));
+                    panel(g, x, 850, choiceWidth, 188, correct ? new Color(255, 209, 96, 250) : new Color(13, 25, 38, 242));
                     Color foreground = correct ? INK : PAPER;
-                    text(g, choice.id() + "  " + choice.label(), x + 24, 866, 552, 44, 32, foreground, Font.BOLD);
-                    text(g, choice.statement(), x + 24, 920, 552, 102, 30, foreground, Font.PLAIN);
+                    text(g, choice.id() + "  " + choice.label(), x + 18, 866, choiceWidth - 36, 44, choiceCount == 4 ? 28 : 32, foreground, Font.BOLD);
+                    text(g, choice.statement(), x + 18, 920, choiceWidth - 36, 102, choiceCount == 4 ? 26 : 30, foreground, Font.PLAIN);
                 }
             }
             panel(g, 0, 1048, WIDTH, 32, INK);
             text(g, phase.equals("reveal") ? "Reasoning beats guessing. What was your key clue?"
-                : "Read every fact. Choose A, B or C. Pause if you need more time.", 38, 1050, 1844, 27, 22, PAPER, Font.PLAIN);
+                : "Read every fact. Choose from " + p.choices().stream().map(EpisodeSpec.Choice::id).collect(java.util.stream.Collectors.joining(", ")) + ". Pause if you need more time.", 38, 1050, 1844, 27, 22, PAPER, Font.PLAIN);
         } finally { g.dispose(); }
         return canvas;
     }

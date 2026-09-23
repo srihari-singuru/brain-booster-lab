@@ -14,7 +14,7 @@ const REVIEW_ITEMS = [
   ['voice', 'The voice pace and energy feel right.'],
   ['preview', 'I watched the preview video from start to finish.']
 ];
-let defaultSettings = {channelName:'BRAIN BOOSTER LAB', puzzleCount:3, textModel:'gpt-4o-mini', imageModel:'gpt-image-1', narrationModel:'gpt-4o-mini', speechModel:'gpt-4o-mini-tts', speechVoice:'cedar', speechSpeed:1};
+let defaultSettings = {channelName:'PUZZLE POP', puzzleCount:3, textModel:'gpt-4o-mini', imageModel:'gpt-image-1', narrationModel:'gpt-4o-mini', speechModel:'gpt-4o-mini-tts', speechVoice:'cedar', speechSpeed:1};
 let modelCatalog = {text:['gpt-6-astra','gpt-5.6-sol','gpt-5.6-terra'],image:['gpt-image-2'],speech:['gpt-4o-mini-tts'],voices:['cedar','marin','alloy','ash','ballad','coral','echo','fable','nova','onyx','sage','shimmer','verse'],live:false};
 const by = id => document.querySelector('#' + id);
 const el = (tag, text, className) => { const node = document.createElement(tag); if (text != null) node.textContent = text; if (className) node.className = className; return node; };
@@ -142,7 +142,7 @@ function waitingMessage(e, index) {
 }
 function instructionKey(action) { return ({generate:'generate',review:'review',artwork:'artwork',narration:'narration','ground-narration':'grounding',speech:'speech'})[action]; }
 function basePromptLabel(action) {
-  return ({generate:'Create picture-first family mini-mysteries from the creative prompt and the selected puzzle count.',review:'Independently check fairness, age fit, and whether every answer has one clear proof.',artwork:'Create a pure, unlabelled 16:9 scene with candidates in clear left-to-right lanes and clean space above each one. The application places one OPTION letter near each subject inside the picture.',narration:'Write an energetic but natural story-led voice-over grounded in the reviewed puzzles.', 'ground-narration':'Compare the narration against the finished question frames and correct only what the image proves.',speech:'Perform the approved narration with the selected OpenAI voice and speed.'})[action] || '';
+  return ({generate:'Create picture-first family puzzles from the creative prompt and selected puzzle count, using exactly three or four choices and avoiding concepts in local puzzle history.',review:'Independently check family difficulty, variety, fairness, and whether every answer has one clear proof.',artwork:'Create a pure, unlabelled 16:9 scene with three or four candidates in clear left-to-right lanes. Keep a quiet strip along the bottom; the application places the OPTION letters there without shrinking the picture.',narration:'Write an energetic but natural story-led voice-over grounded in the reviewed puzzles.', 'ground-narration':'Compare the narration against the finished question frames and correct only what the image proves.',speech:'Perform the approved narration with the selected OpenAI voice and speed.'})[action] || '';
 }
 function stageDirection(e, action) {
   const key = instructionKey(action); if (!key) return null;
@@ -183,6 +183,20 @@ function regenerateFailures(e, path, singular, count, nextStep) {
       localStorage.setItem(`brain-booster-step-${episode.id}`, String(nextStep));
       if (isWorking(episode)) localStorage.setItem(runningKey(episode), String(Date.now()));
       notice(`${subject} ${count === 1 ? 'is' : 'are'} regenerating in a new version. The original episode is unchanged.`);
+    } catch (error) { notice(error.message); }
+    finally { busy = false; draw(); }
+  };
+}
+function regenerateItem(e, path, puzzleNumber, stageIndex, label) {
+  return async () => {
+    if (busy || isWorking(e) || e.approvedAt) return;
+    busy = true; draw(); notice(`Creating a new version and regenerating Puzzle ${puzzleNumber} ${label}…`);
+    try {
+      episode = await request('/' + e.id + path, 'POST', {puzzleNumber});
+      selected = episode.id; location.hash = selected; step = stageIndex;
+      localStorage.setItem(`brain-booster-step-${episode.id}`, String(stageIndex));
+      if (isWorking(episode)) localStorage.setItem(runningKey(episode), String(Date.now()));
+      notice(`Puzzle ${puzzleNumber} ${label} is regenerating in a new version. The original episode is unchanged.`);
     } catch (error) { notice(error.message); }
     finally { busy = false; draw(); }
   };
@@ -332,6 +346,7 @@ function puzzleOutput(e, pane) {
     const card = el('article', null, 'puzzle-output'); card.append(el('span', `Puzzle ${index + 1}`, 'puzzle-number'), el('h4', puzzle.title || `Puzzle ${index + 1}`), el('p', puzzle.question, 'puzzle-question'));
     const choices = el('div', null, 'choice-list'); puzzle.choices?.forEach(choice => choices.append(el('span', `${choice.id}. ${choice.label}`, choice.id === puzzle.answerId ? 'answer-choice' : ''))); card.append(choices);
     card.append(el('p', `Answer: Option ${puzzle.answerId}`, 'answer-line'), el('p', `Reasoning: ${puzzle.explanation}`, 'reasoning-line'));
+    if (!e.approvedAt && !isWorking(e)) addButton(card, 'Regenerate this puzzle', regenerateItem(e, '/regenerate-puzzle', index + 1, 0, 'puzzle'), 'secondary');
     pane.append(card);
   });
 }
@@ -359,7 +374,9 @@ function artworkOutput(e, pane) {
   outputTitle(pane, 'Generated result', 'Artwork');
   if (!e.artworkReady) return emptyOutput(pane, 'The finished question and answer images will appear here for your review.');
   const grid = el('div', null, 'art-grid'); e.spec.puzzles.forEach((puzzle, index) => {
-    const card = el('figure', null, 'art-card'); const image = document.createElement('img'); image.src = media(e, `question-${index}.png`); image.alt = `Puzzle ${index + 1} question artwork`; image.loading = 'lazy'; card.append(image, el('figcaption', `Puzzle ${index + 1} · question`)); grid.append(card);
+    const card = el('figure', null, 'art-card'); const image = document.createElement('img'); image.src = media(e, `question-${index}.png`); image.alt = `Puzzle ${index + 1} question artwork`; image.loading = 'lazy'; card.append(image, el('figcaption', `Puzzle ${index + 1} · question`));
+    if (!e.approvedAt && !isWorking(e)) addButton(card, 'Regenerate this image', regenerateItem(e, '/regenerate-artwork', index + 1, 2, 'artwork'), 'secondary');
+    grid.append(card);
     const reveal = el('figure', null, 'art-card'); const revealImage = document.createElement('img'); revealImage.src = media(e, `reveal-${index}.png`); revealImage.alt = `Puzzle ${index + 1} answer artwork with highlighted clue`; revealImage.loading = 'lazy'; reveal.append(revealImage, el('figcaption', `Puzzle ${index + 1} · answer highlight`)); grid.append(reveal);
   }); pane.append(grid);
   pane.append(el('p', 'The answer image automatically locates and circles the decisive clue during its animated reveal.', 'visual-note'));

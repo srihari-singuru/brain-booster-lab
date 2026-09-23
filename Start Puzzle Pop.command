@@ -1,8 +1,8 @@
 #!/bin/zsh
-# Double-click this file in Finder to rebuild and start the local Brain Booster Lab portal.
+# Double-click this file in Finder to rebuild and start the local Puzzle Pop portal.
 
 export BRAIN_BOOSTER_PROJECT_DIR="${0:A:h}"
-source "$BRAIN_BOOSTER_PROJECT_DIR/scripts/brain-booster-local.zsh" || exit 1
+source "$BRAIN_BOOSTER_PROJECT_DIR/scripts/puzzle-pop-local.zsh" || exit 1
 
 bb_prepare_path
 bb_select_java_25 || exit 1
@@ -15,9 +15,9 @@ bb_start_database || exit 1
 bb_load_environment || exit 1
 
 cd "$BRAIN_BOOSTER_PROJECT_DIR" || exit 1
-print -- "Building the latest Brain Booster Lab code…"
+print -- "Building the latest Puzzle Pop code…"
 if ! mvn -DskipTests clean package; then
-  bb_alert "The build failed, so the portal was not started. Fix the errors shown in this Terminal window, then run Start Brain Booster Lab again."
+  bb_alert "The build failed, so the portal was not started. Fix the errors shown in this Terminal window, then run Start Puzzle Pop again."
   exit 1
 fi
 
@@ -32,4 +32,4 @@ if ! bb_wait_for_portal; then
 fi
 
 open "http://localhost:$BB_PORT/"
-print -- "Brain Booster Lab is ready at http://localhost:$BB_PORT/"
+print -- "Puzzle Pop is ready at http://localhost:$BB_PORT/"

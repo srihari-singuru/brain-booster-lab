@@ -13,11 +13,11 @@ import com.brainboosterlab.channel.content.ArtworkProperties;
 
 @SpringBootApplication
 @EnableConfigurationProperties({GenerationProperties.class, ArtworkProperties.class})
-public class BrainBoosterLabApplication {
+public class PuzzlePopApplication {
 
     public static void main(String[] args) {
         loadLocalEnvironment();
-        SpringApplication.run(BrainBoosterLabApplication.class, args);
+        SpringApplication.run(PuzzlePopApplication.class, args);
     }
 
     /**

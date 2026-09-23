@@ -1,9 +1,10 @@
+# Keep this legacy Compose identifier so the existing PostgreSQL volume remains attached after the repo rename.
 name: referenced-chatgpt-conversation-this-is-an
 
 services:
   postgres:
     image: postgres:17-alpine
-    container_name: brain-booster-lab-postgres
+    container_name: puzzle-pop-postgres
     environment:
       POSTGRES_DB: brain_booster_lab
       POSTGRES_USER: brain_booster

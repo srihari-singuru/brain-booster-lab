@@ -157,7 +157,7 @@ class FfmpegVideoRenderer implements VideoRenderer {
     private void drawTitle(Graphics2D g, PuzzleText puzzle) {
         background(g, new GradientPaint(0, 0, BLUE, WIDTH, HEIGHT, NAVY));
         drawDecorations(g);
-        drawPill(g, "BRAIN BOOSTER LAB", 120, 100, 520, 64, YELLOW, NAVY);
+        drawPill(g, "PUZZLE POP", 120, 100, 520, 64, YELLOW, NAVY);
         drawCentered(g, puzzle.title(), 960, 390, 86, Font.BOLD, CREAM, 1550);
         drawWrappedCentered(g, puzzle.hook(), 960, 520, 42, Font.PLAIN, CREAM, 1500, 2);
         drawCentered(g, "LOOK CLOSELY • SOLVE THE CLUE", 960, 760, 34, Font.BOLD, YELLOW, 1500);
@@ -182,7 +182,7 @@ class FfmpegVideoRenderer implements VideoRenderer {
     private void drawCta(Graphics2D g, PuzzleText puzzle) {
         background(g, new GradientPaint(0, 0, PINK, WIDTH, HEIGHT, NAVY));
         drawDecorations(g);
-        drawPill(g, "BRAIN BOOSTER LAB", 120, 110, 520, 64, YELLOW, NAVY);
+        drawPill(g, "PUZZLE POP", 120, 110, 520, 64, YELLOW, NAVY);
         drawCentered(g, "HOW FAST DID YOU FIND IT?", 960, 390, 72, Font.BOLD, CREAM, 1650);
         drawCentered(g, puzzle.cta(), 960, 565, 42, Font.PLAIN, CREAM, 1500);
         drawPill(g, "LIKE • COMMENT • SUBSCRIBE", 610, 745, 700, 72, CYAN, NAVY);
@@ -252,7 +252,7 @@ class FfmpegVideoRenderer implements VideoRenderer {
         Font font = new Font("SansSerif", style, size);
         g.setFont(font);
         FontMetrics metrics = g.getFontMetrics();
-        String value = text == null || text.isBlank() ? "Brain Booster Lab" : text.trim();
+        String value = text == null || text.isBlank() ? "Puzzle Pop" : text.trim();
         if (metrics.stringWidth(value) > maxWidth) {
             while (value.length() > 8 && metrics.stringWidth(value + "…") > maxWidth) {
                 value = value.substring(0, value.length() - 1);
@@ -286,7 +286,7 @@ class FfmpegVideoRenderer implements VideoRenderer {
             lines.add(line.toString());
         }
         if (lines.isEmpty()) {
-            lines.add("Brain Booster Lab");
+            lines.add("Puzzle Pop");
         }
         if (lines.size() > maxLines) {
             lines = new ArrayList<>(lines.subList(0, maxLines));
@@ -360,7 +360,7 @@ class FfmpegVideoRenderer implements VideoRenderer {
                     value(script, "HOOK", "Can you spot the clue before the timer ends?"),
                     value(script, "PUZZLE", job.getPrompt()),
                     value(script, "ANSWER", "The hidden star was in tile 7."),
-                    value(script, "CTA", "Comment your score and try the next Brain Booster Lab challenge!")
+                    value(script, "CTA", "Comment your score and try the next Puzzle Pop challenge!")
             );
         }
 

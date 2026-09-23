@@ -1,22 +1,23 @@
-# Brain Booster Lab
+# Puzzle Pop
 
 Local-first production system for family-friendly puzzle and detective videos.
 
 ## Episode Studio (current workflow)
 
-### Kids-first visual mysteries
+### Family visual puzzles
 
-New briefs now target roughly ages 6–10: three illustrated choices, one visible clue and one
-simple inference. No mandatory arithmetic, time calculations, truth tables or number patterns.
-The first puzzle should give an achievable win; later puzzles may be slightly subtler, not trickier.
-Examples include a friendly ghost without a shadow in a clearly fictional world, a handmade robot costume,
-or a wind-up toy. Appearance, ethnicity and disability are never evidence of being nonhuman.
+New briefs target children, teens, and parents solving together. Puzzles use exactly three or four
+illustrated choices and a fair medium-to-challenging level: compare the scene and connect a clear visual
+clue to a simple rule or relationship; never rely on tricky wording, obscure facts, or tiny details. Every puzzle has equal difficulty.
+The generator receives a compact local history of recent titles, premises, questions, and reveal logic to
+discourage repeats. Appearance, ethnicity, and disability are never evidence of being nonhuman.
 
-On screen: a question of at most ten words, A/B/C badges, at most one essential short story rule,
+On screen: a question of at most ten words, three-or-four A/B/C/D badges in a quiet strip near the bottom
+of the full-size picture,
 and a reveal of at most fourteen words. The 16:9 artwork remains complete inside a large white-framed
-centre stage; a blue patterned Brain Booster Lab board fills the rest of the 1920×1080 video. The question
+centre stage; a color-matched patterned Puzzle Pop board fills the rest of the 1920×1080 video. The question
 sits above the frame rather than covering the art, and a comic-style puzzle number, vertical channel branding,
-plus a generic play mark occupy the outer board. The board's gradient is derived from the individual scene's
+plus a colorful YouTube play mark occupy the outer board. The board's gradient is derived from the individual scene's
 dominant lively hue, with a gentle drifting diamond pattern. There is no stretching or crop of the scene artwork. The lower floor area stays free
 of answer panels. The temporary silent pacing contract is six seconds
 for the spoken-question lead-in, exactly ten seconds of visible thinking timer, then six seconds for the
@@ -114,9 +115,9 @@ Run tests with `mvn test` (headless graphics enabled for macOS).
 
 ### One-click Mac start and stop
 
-In Finder, double-click [Start Brain Booster Lab.command](Start%20Brain%20Booster%20Lab.command) to start Docker Desktop, the persistent PostgreSQL database, rebuild the latest code, start the local portal, and open `http://localhost:8090/`.
+In Finder, double-click [Start Puzzle Pop.command](Start%20Puzzle%20Pop.command) to start Docker Desktop, the persistent PostgreSQL database, rebuild the latest code, start the local portal, and open `http://localhost:8090/`.
 
-Double-click [Stop Brain Booster Lab.command](Stop%20Brain%20Booster%20Lab.command) to stop the portal, stop PostgreSQL, and quit Docker Desktop. It deliberately does **not** remove the named `postgres-data` volume or anything under `outputs/`, so saved episodes, assets, and database records survive the next start. Stopping Docker Desktop also stops any other Docker workloads running on this Mac.
+Double-click [Stop Puzzle Pop.command](Stop%20Puzzle%20Pop.command) to stop the portal, stop PostgreSQL, and quit Docker Desktop. It deliberately does **not** remove the named `postgres-data` volume or anything under `outputs/`, so saved episodes, assets, and database records survive the next start. Stopping Docker Desktop also stops any other Docker workloads running on this Mac.
 
 ```bash
 cp .env.example .env
@@ -127,7 +128,7 @@ mvn spring-boot:run
 
 Check the service at `http://localhost:8080/api/v1/status` and health at `http://localhost:8080/actuator/health`.
 
-Open `http://localhost:8080/` for the local Brain Booster Lab control center. It provides buttons to create briefs, approve scripts, generate content, and render videos; no WhatsApp or publishing account is required.
+Open `http://localhost:8090/` for the local Puzzle Pop control center. It provides buttons to create briefs, approve scripts, generate content, and render videos; no WhatsApp or publishing account is required.
 
 ## Legacy content-job API (previous prototype)
 

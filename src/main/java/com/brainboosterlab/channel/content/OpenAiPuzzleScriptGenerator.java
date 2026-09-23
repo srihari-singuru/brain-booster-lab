@@ -25,7 +25,7 @@ class OpenAiPuzzleScriptGenerator implements PuzzleScriptGenerator {
 
     @Override
     public GeneratedScript generate(ContentJob job) {
-        String input = "Create a premium family-friendly Brain Booster Lab visual puzzle script.\n"
+        String input = "Create a premium family-friendly Puzzle Pop visual puzzle script.\n"
                 + "Title: " + job.getTitle() + "\n"
                 + "Creative brief: " + (job.getPrompt() == null ? "Use a visual detective riddle." : job.getPrompt()) + "\n"
                 + "Use this exact plain-text structure, with one field per line and no markdown: TITLE:, HOOK:, PUZZLE:, PAUSE:, ANSWER:, CTA:.\n"

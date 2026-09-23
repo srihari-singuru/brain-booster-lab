@@ -12,7 +12,7 @@ Keep the existing questions and art for this iteration so presentation can be co
 - The complete 16:9 scene lives inside a large white-framed centre stage, while the patterned board fills the screen.
 - A numbered comic burst at upper left identifies each puzzle; the board gradient uses a dominant vivid colour sampled from its scene.
 - The background diamonds drift gently while the puzzle image remains still, so the clue stays easy to inspect.
-- Vertical Brain Booster Lab branding and a generic play mark use the outer rails; no third-party channel identity or artwork is reused.
+- Vertical Puzzle Pop branding and the familiar YouTube play mark use the outer rails; no third-party channel identity or artwork is reused.
 - Smaller A/B/C badges in the lower subject area, away from faces and the known clues.
   This episode contains three options; do not invent a fourth just to display D.
 - No crop or stretch of the scene artwork; the white-framed stage preserves the complete image and all evidence.

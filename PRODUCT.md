@@ -12,7 +12,7 @@ The primary user is the channel operator creating family puzzle videos locally. 
 
 ## Product Purpose
 
-Brain Booster Lab turns a creative brief into an original family puzzle-video episode: puzzles, review, artwork, narration, image grounding, voice, preview, approval, and final rendering. Success means a creator can confidently produce and review a polished episode without losing track of the next action or the output of any prior action.
+Puzzle Pop turns a creative brief into an original family puzzle-video episode: puzzles, review, artwork, narration, image grounding, voice, preview, approval, and final rendering. Success means a creator can confidently produce and review a polished episode without losing track of the next action or the output of any prior action.
 
 ## Positioning
 
@@ -32,7 +32,9 @@ The portal runs locally in a browser. Each episode has configurable channel, puz
 
 ## Brand Commitments
 
-- Product name: Brain Booster Lab.
+- Product name: Puzzle Pop.
+- Puzzle challenge: medium to moderately challenging, with family-friendly wording and an enjoyable reasoning step for parents and children.
+- Options: exactly three or four, placed along the lower safe strip of the full-size artwork.
 - The operator has requested a clean, minimal, white, professional interface with an OpenAI-style typography preference.
 - The experience should feel calm and clear, not clumsy, congested, or over-decorated.
 

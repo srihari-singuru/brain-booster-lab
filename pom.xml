@@ -12,9 +12,9 @@
     </parent>
 
     <groupId>com.brainboosterlab</groupId>
-    <artifactId>brain-booster-lab</artifactId>
+    <artifactId>puzzle-pop</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <name>Brain Booster Lab</name>
+    <name>Puzzle Pop</name>
     <description>Local-first production system for family-friendly puzzle videos.</description>
 
     <properties>

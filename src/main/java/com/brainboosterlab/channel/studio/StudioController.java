@@ -17,6 +17,7 @@ class StudioController {
     record BriefUpdate(@NotBlank @Size(max = 4000) String brief) {}
     record RestyleOptions(List<SceneOverlay.Region> clueRegions) {}
     record ArtworkSelection(List<Integer> puzzleNumbers) {}
+    record ItemSelection(int puzzleNumber) {}
     private final StudioService studio;
     private final OpenAiModelCatalog models;
     StudioController(StudioService studio, OpenAiModelCatalog models) { this.studio = studio; this.models = models; }
@@ -41,6 +42,8 @@ class StudioController {
     @PostMapping(value = "/{id}/regenerate-failed-puzzles", consumes = "application/json") StudioService.View regenerateFailedPuzzles(@PathVariable UUID id) {
         return studio.startFailedReviewPuzzlesRegeneration(id);
     }
+    @PostMapping(value = "/{id}/regenerate-puzzle", consumes = "application/json") StudioService.View regeneratePuzzle(@PathVariable UUID id,
+        @RequestBody ItemSelection selection) { return studio.startPuzzleRegeneration(id, selection == null ? 0 : selection.puzzleNumber()); }
     @PostMapping(value = "/{id}/narration", consumes = "application/json") StudioService.View narration(@PathVariable UUID id) { return studio.startNarration(id); }
     @PostMapping(value = "/{id}/ground-narration", consumes = "application/json") StudioService.View groundNarration(@PathVariable UUID id) { return studio.startGroundNarration(id); }
     @PostMapping(value = "/{id}/continue-with-grounding-warnings", consumes = "application/json") StudioService.View continueWithGroundingWarnings(@PathVariable UUID id) {
@@ -60,6 +63,8 @@ class StudioController {
     @PostMapping(value = "/{id}/restyle", consumes = "application/json") StudioService.View restyle(@PathVariable UUID id,
         @RequestBody(required = false) RestyleOptions options) { return studio.startRestyle(id, options == null ? null : options.clueRegions()); }
     @PostMapping(value = "/{id}/artwork", consumes = "application/json") StudioService.View artwork(@PathVariable UUID id) { return studio.startArtwork(id); }
+    @PostMapping(value = "/{id}/regenerate-artwork", consumes = "application/json") StudioService.View regenerateArtwork(@PathVariable UUID id,
+        @RequestBody ItemSelection selection) { return studio.startArtworkRegeneration(id, selection == null ? 0 : selection.puzzleNumber()); }
     @PostMapping(value = "/{id}/artwork-selection", consumes = "application/json") StudioService.View artworkSelection(@PathVariable UUID id,
         @RequestBody ArtworkSelection selection) { return studio.selectArtworkPuzzles(id, selection == null ? null : selection.puzzleNumbers()); }
     @PostMapping(value = "/{id}/highlight", consumes = "application/json") StudioService.View highlight(@PathVariable UUID id,

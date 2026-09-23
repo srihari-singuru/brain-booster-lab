@@ -27,10 +27,10 @@ final class KidsFrameRenderer {
     }
 
     static Rectangle badgeBox(int index, int count, Rectangle imageBox) {
-        // Artwork generation reserves a clean strip above each left-to-right subject.
-        // A single letter marker is readable on a phone without hiding the clue below.
+        // Artwork generation reserves a quiet strip along the bottom of each candidate lane.
+        // Letters stay grouped with their subject without covering the clue or shrinking the picture.
         int centerX = imageBox.x + (2 * index + 1) * imageBox.width / (2 * count);
-        return new Rectangle(centerX - 50, imageBox.y + 52, 100, 100);
+        return new Rectangle(centerX - 50, imageBox.y + imageBox.height - 130, 100, 100);
     }
 
     static BufferedImage frame(EpisodeSpec.Puzzle p, BufferedImage art, int index, String phase, int countdown, boolean draft) {
@@ -39,7 +39,7 @@ final class KidsFrameRenderer {
 
     static BufferedImage frame(EpisodeSpec.Puzzle p, BufferedImage art, int index, String phase, int countdown, boolean draft,
                                SceneOverlay overlay, double revealTime) {
-        return frame(p, art, index, phase, countdown, draft, overlay, revealTime, "BRAIN BOOSTER LAB", 3);
+        return frame(p, art, index, phase, countdown, draft, overlay, revealTime, "PUZZLE POP", 3);
     }
 
     static BufferedImage frame(EpisodeSpec.Puzzle p, BufferedImage art, int index, String phase, int countdown, boolean draft,
@@ -63,6 +63,10 @@ final class KidsFrameRenderer {
             g.setColor(new Color(12, 32, 66)); g.setStroke(new BasicStroke(4));
             g.drawRoundRect(ART_PANEL.x, ART_PANEL.y, ART_PANEL.width, ART_PANEL.height, 30, 30);
 
+            g.setColor(new Color(8, 27, 58, 220));
+            g.fillRoundRect(205, 18, 1510, 112, 26, 26);
+            g.setColor(new Color(255, 218, 78, 230)); g.setStroke(new BasicStroke(3));
+            g.drawRoundRect(205, 18, 1510, 112, 26, 26);
             headlineCentered(g, reveal ? "ANSWER " + p.answerId() + "!" : p.question().toUpperCase(Locale.ROOT),
                 new Rectangle(205, 18, 1510, 112), 92, 42, reveal ? YELLOW : Color.WHITE, 8);
             drawPuzzleNumber(g, index + 1);
@@ -71,16 +75,17 @@ final class KidsFrameRenderer {
                 var choice = p.choices().get(i);
                 boolean correct = reveal && choice.id().equals(p.answerId());
                 var b = badgeBox(i, p.choices().size(), fit);
-                g.setColor(new Color(6, 24, 50, 132)); g.fillOval(b.x + 5, b.y + 7, b.width, b.height);
+                g.setColor(new Color(6, 24, 50, 150)); g.fillOval(b.x + 5, b.y + 7, b.width, b.height);
                 if (correct) {
                     double pulse = revealTime < 1.2 ? 8 * Math.sin(Math.PI * Math.min(1, revealTime / 1.2)) : 0;
                     g.setColor(CORRECT); g.setStroke(new BasicStroke(6));
                     g.drawOval((int)(b.x - 8 - pulse), (int)(b.y - 8 - pulse),
                         (int)(b.width + 16 + 2 * pulse), (int)(b.height + 16 + 2 * pulse));
                 }
-                g.setColor(correct ? CORRECT : YELLOW); g.fillOval(b.x, b.y, b.width, b.height);
-                g.setColor(OUTLINE); g.setStroke(new BasicStroke(5)); g.drawOval(b.x, b.y, b.width, b.height);
-                centered(g, choice.id(), b, 62, OUTLINE);
+                g.setColor(correct ? CORRECT : new Color(255, 255, 255, 248)); g.fillOval(b.x, b.y, b.width, b.height);
+                g.setColor(correct ? new Color(17, 116, 63) : new Color(227, 49, 67));
+                g.setStroke(new BasicStroke(8)); g.drawOval(b.x, b.y, b.width, b.height);
+                centered(g, choice.id(), b, 62, new Color(20, 35, 57));
             }
             if (reveal && overlay != null) {
                 int answerIndex = 0;
@@ -99,8 +104,6 @@ final class KidsFrameRenderer {
             }
             drawSideBrand(g, 66, 540, true, channelName);
             drawSideBrand(g, 1854, 540, false, channelName);
-            drawPlayBadge(g, 32, 728);
-            drawPlayBadge(g, 1818, 728);
             if (draft) headline(g, "DRAFT", new Rectangle(30, 1020, 100, 28), 22, 18, Color.WHITE, 3);
         } finally { g.dispose(); }
         return canvas;
@@ -171,13 +174,16 @@ final class KidsFrameRenderer {
             g.setColor(new Color(10, 47, 94, 120)); g.drawString(name, x - width / 2 + 3, baseline + 3);
             g.setColor(new Color(255, 255, 255, 235)); g.drawString(name, x - width / 2, baseline);
         } finally { g.setTransform(transform); }
+        drawYoutubeMark(g, x - 25, centerY + 94, 50, 36);
     }
 
-    /** A locally bundled, official Google Material subscription icon—not a YouTube affiliation badge. */
-    private static void drawPlayBadge(Graphics2D g, int x, int y) {
-        g.setColor(new Color(9, 39, 79, 80)); g.fillOval(x + 3, y + 5, 60, 60);
-        g.setColor(new Color(255, 255, 255, 235)); g.fillOval(x, y, 60, 60);
-        VideoIcons.subscribe(g, x + 14, y + 14, 32);
+    private static void drawYoutubeMark(Graphics2D g, int x, int y, int width, int height) {
+        g.setColor(new Color(12, 32, 66, 92)); g.fillRoundRect(x - 3, y + 3, width + 6, height + 6, 15, 15);
+        g.setColor(new Color(255, 0, 51)); g.fillRoundRect(x, y, width, height, 13, 13);
+        int inset = width / 3;
+        Polygon play = new Polygon(new int[]{x + inset, x + inset, x + width - inset},
+            new int[]{y + height / 4, y + 3 * height / 4, y + height / 2}, 3);
+        g.setColor(Color.WHITE); g.fillPolygon(play);
     }
 
     /** Never let the animated ring be clipped at the lower edge of a full-width scene stage. */

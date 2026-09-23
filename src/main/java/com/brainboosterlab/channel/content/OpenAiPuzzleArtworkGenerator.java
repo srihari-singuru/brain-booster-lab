@@ -40,7 +40,7 @@ class OpenAiPuzzleArtworkGenerator implements PuzzleArtworkGenerator {
 
     @Override
     public BufferedImage generate(ContentJob job) {
-        String prompt = "Create a polished premium children's editorial illustration for a Brain Booster Lab visual puzzle. "
+        String prompt = "Create a polished premium family editorial illustration for a Puzzle Pop visual puzzle. "
                 + "Use the visual quality of a high-end animated feature key frame: confident composition, crisp expressive linework, "
                 + "layered depth, cinematic soft lighting, tactile materials, rich but harmonious color, and clear focal hierarchy. "
                 + "Show a welcoming family-friendly mystery room with two distinct friendly detectives, a small helper robot, "

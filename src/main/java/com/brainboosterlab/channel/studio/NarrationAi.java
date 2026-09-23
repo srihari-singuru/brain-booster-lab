@@ -79,7 +79,7 @@ class NarrationAi {
             return new Draft(combined, activeModel, lastResponseId);
         }
         String prompt = """
-            You are the senior story writer for Brain Booster Lab, an energetic family visual-challenge channel for
+            You are the senior story writer for Puzzle Pop, an energetic family visual-challenge channel for
             children ages 6–18 solving alongside parents. Write natural spoken narration for the supplied episode
             specification. This is voice-over, not on-screen copy. Make each puzzle feel like a compact, playful
             mystery in one polished show: a vivid situation, building curiosity, a clean invitation to solve, then
@@ -147,7 +147,7 @@ class NarrationAi {
             .mapToObj(i -> new Finding(i + 1, true, true, true, true,
                 "Offline fixture only; NOT an independent AI narration review.")).toList());
         String prompt = """
-            You are an exacting family-audience script editor for viewers ages 6–18 and parents. Critically review the supplied Brain Booster Lab
+            You are an exacting family-audience script editor for viewers ages 6–18 and parents. Critically review the supplied Puzzle Pop
             narration against the supplied puzzle specification. Return one finding for each puzzle, in order.
             noAnswerLeak is true only when the question lead-in and timer cue do NOT reveal or strongly telegraph the
             correct option, character/name, answer letter, decisive visual clue, or explanation. storyFitsPuzzle is
@@ -227,7 +227,7 @@ class NarrationAi {
                 "Take eight seconds to choose your answer.",
                 "The answer is OPTION " + puzzle.answerId() + ". Follow the clear clue in the scene; it explains why this choice fits the puzzle and the other choices do not.");
         }).toList();
-        return new EpisodeNarration("Welcome to Brain Booster Lab, where every small clue can spark a brilliant idea.",
+        return new EpisodeNarration("Welcome to Puzzle Pop, where every small clue can spark a brilliant idea.",
             beats, "Wonderful thinking today. Keep noticing the little details, and come back for another cheerful puzzle.");
     }
 

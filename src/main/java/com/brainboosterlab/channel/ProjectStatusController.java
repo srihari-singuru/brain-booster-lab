@@ -13,7 +13,7 @@ class ProjectStatusController {
     @GetMapping("/status")
     Map<String, String> status() {
         return Map.of(
-                "service", "brain-booster-lab",
+                "service", "puzzle-pop",
                 "state", "ready",
                 "architecture", "local-first"
         );

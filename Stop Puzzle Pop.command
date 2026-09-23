@@ -3,7 +3,7 @@
 # It never deletes the PostgreSQL volume or the saved episode files.
 
 export BRAIN_BOOSTER_PROJECT_DIR="${0:A:h}"
-source "$BRAIN_BOOSTER_PROJECT_DIR/scripts/brain-booster-local.zsh" || exit 1
+source "$BRAIN_BOOSTER_PROJECT_DIR/scripts/puzzle-pop-local.zsh" || exit 1
 
 bb_prepare_path
 mkdir -p "$BB_RUNTIME_DIR"
@@ -19,4 +19,4 @@ fi
 print -- "Closing Docker Desktop…"
 /usr/bin/osascript -e 'tell application "Docker Desktop" to quit' >/dev/null 2>&1 || /usr/bin/osascript -e 'tell application "Docker" to quit' >/dev/null 2>&1 || true
 
-bb_alert "Brain Booster Lab, PostgreSQL, and Docker Desktop have been stopped. Your saved episodes and database volume remain intact."
+bb_alert "Puzzle Pop, PostgreSQL, and Docker Desktop have been stopped. Your saved episodes and database volume remain intact."

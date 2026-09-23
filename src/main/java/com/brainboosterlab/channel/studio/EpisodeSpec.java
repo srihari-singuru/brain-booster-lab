@@ -27,8 +27,8 @@ public record EpisodeSpec(String title, List<Puzzle> puzzles) {
                     "Use a reasoning question, not an object search");
             require(p.facts() != null && (visual ? p.facts().size() <= 1 : p.facts().size() >= 1 && p.facts().size() <= 3), "Visual puzzles allow at most one short story rule");
             p.facts().forEach(f -> text(f, visual ? 65 : 100, "Fact"));
-            require(p.choices() != null && p.choices().size() >= 3 && p.choices().size() <= 5,
-                "Use between three and five choices");
+            require(p.choices() != null && p.choices().size() >= 3 && p.choices().size() <= 4,
+                "Use three or four choices");
             for (int i = 0; i < p.choices().size(); i++) {
                 Choice c = p.choices().get(i);
                 require(c != null && String.valueOf((char) ('A' + i)).equals(c.id()),
@@ -44,6 +44,12 @@ public record EpisodeSpec(String title, List<Puzzle> puzzles) {
             text(p.sceneDescription(), 1600, "Scene description");
             require(p.thinkSeconds() >= 8 && p.thinkSeconds() <= (visual ? 15 : 25), "Thinking time outside supported range");
         }
+    }
+    /** Newly generated content is limited to 3–4 choices; validate() keeps older saved 5-choice records readable. */
+    public void validateNewChoices() {
+        validate();
+        for (Puzzle puzzle : puzzles)
+            require(puzzle.choices().size() <= 4, "New puzzles must use three or four choices");
     }
     private static void text(String value, int max, String label) {
         require(value != null && !value.isBlank() && value.length() <= max, label + " is missing or too long (max " + max + ")");

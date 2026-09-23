@@ -6,7 +6,7 @@ server:
 
 spring:
   application:
-    name: brain-booster-lab
+    name: puzzle-pop
   datasource:
     url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/brain_booster_lab}
     username: ${DATABASE_USER:brain_booster}

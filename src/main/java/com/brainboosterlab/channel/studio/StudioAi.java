@@ -133,8 +133,9 @@ class StudioAi {
             Create %d original illustrated visual mini-mysteries for a family channel: children ages 6–18
             solving lively challenges with parents. Set kind="visual" for EVERY puzzle. Each is a satisfying
             family challenge: not an instant giveaway, but fair to solve during one eight-second look by comparing
-            the whole scene, noticing one meaningful detail, and making one simple inference. The first puzzle
-            is not a warm-up; every puzzle should have the same enjoyable, medium challenge level. Never use
+            three or four plausible candidates and connecting a clear visual clue to a simple story rule or relationship.
+            It should take one satisfying reasoning step beyond merely spotting a difference. The first puzzle
+            is not a warm-up; every puzzle should have the same enjoyable, medium-to-challenging level. Never use
             arithmetic, number patterns, time calculations, truth tables, long alibis, schoolwork, or tiny
             hidden-object searches.
 
@@ -149,9 +150,9 @@ class StudioAi {
             the premise, physical evidence, and decisive observation new each time. Do not reuse a title,
             question shape, setting, clue mechanism, or reveal wording across puzzles.
 
-            Use 3, 4, or 5 candidates when it serves the scene; vary the candidate count across this episode
-            when there is more than one puzzle. Choices must be consecutive OPTION letters starting at A
-            (A/B/C, A/B/C/D, or A/B/C/D/E). All candidates must be equally plausible at first glance and the
+            Use exactly 3 or 4 candidates, selecting whichever count best serves this puzzle; vary between
+            three and four where natural. Choices must be consecutive OPTION letters starting at A
+            (A/B/C or A/B/C/D). Never create a fifth candidate. All candidates must be equally plausible at first glance and the
             correct one must be proven by the picture, not by a suspicious expression or obvious category mismatch.
             Spread correct OPTION letters across an episode: do not repeatedly make the same position correct when
             other valid options are available. When the no-repeat list contains CURRENT EPISODE ANSWER DISTRIBUTION,
@@ -166,11 +167,11 @@ class StudioAi {
             question: max10 words AND60 characters. facts: zero or one line, max65 characters;
             only an essential story rule, never a paragraph or solution. setup: spoken introduction
             for FUTURE narration, max155 characters; not displayed as a paragraph in the video.
-            choices: three to five consecutive choices A through C, D, or E in left-to-right order; label a name/color max24 characters;
+            choices: exactly three or four consecutive choices A through C or D in left-to-right order; label a name/color max24 characters;
             statement max100 characters describing the subject's appearance for production, NOT a
             spoken alibi or caption. Do NOT reveal the clue in the label. explanation: a warm,
             concrete reveal, max14 words AND85 characters. title max48, episode title max65.
-            sceneDescription: max%s characters. Specify exactly the chosen three-to-five candidate subjects,
+            sceneDescription: max%s characters. Specify exactly the chosen three-or-four candidate subjects,
             arranged left-to-right in matching OPTION order, with every candidate and the full clue visible.
             State the exact clue and which candidate owns it, plus clear ordinary counterparts. Do not add
             confusing extra candidate-like people or props. NO text or badges in sceneDescription: the application
@@ -219,10 +220,11 @@ class StudioAi {
             spec = new EpisodeSpec(spec.title(), List.of(spec.puzzles().getFirst()));
         // Persist the paid structured response before local/independent validation in the service.
         EpisodeSpec.require(spec.puzzles().size() == puzzleCount, "The script returned the wrong number of puzzles; retry generation");
+        spec.validateNewChoices();
         return new Draft(spec, activeModel, response.id());
     }
 
-    /** Models occasionally spell identifiers as "OPTION C"; storage uses canonical A–E IDs. */
+    /** Models occasionally spell identifiers as "OPTION C"; storage uses canonical A–D IDs. */
     private static EpisodeSpec normalizeOptionIds(EpisodeSpec source) {
         if (source.puzzles() == null) return source;
         var puzzles = new ArrayList<EpisodeSpec.Puzzle>();
@@ -270,11 +272,11 @@ class StudioAi {
             + spec.puzzles().size() + " puzzles in order. For each return puzzleNumber in order starting at 1, "
             + "independentlySolvedAnswerId matching one supplied OPTION letter (or NONE if ambiguous), fair boolean, and notes explaining the proof "
             + "and why every alternative fails. Judge for children ages 6–18 solving with parents: each puzzle must be a satisfying "
-            + "medium challenge, not an instant giveaway and not a frustrating hunt. It must be fairly solvable from one meaningful, phone-visible "
-            + "visual observation and one simple inference during an eight-second look. "
+            + "medium-to-challenging level, not an instant giveaway and not a frustrating hunt. It must be fairly solvable by comparing plausible candidates and connecting a meaningful, phone-visible visual clue to a simple story rule or relationship during an eight-second look. It must take one satisfying reasoning step beyond spotting a difference. Children should reason with a parent, "
+            + "and adults should also need to compare candidates rather than spot an instant giveaway. "
             + "Reject ambiguity, unstated necessary facts, harmful stereotypes, claims that lying proves guilt, arithmetic, number patterns, "
-            + "time calculations, truth tables, long alibis, schoolwork, and tiny object hunts. Verify every puzzle has 3–5 consecutive supplied "
-            + "OPTION letters, equally plausible candidates, and a correct answer proven by the planned picture rather than expression, appearance, or category difference. "
+            + "time calculations, truth tables, long alibis, schoolwork, and tiny object hunts. Verify every puzzle has exactly 3 or 4 consecutive supplied "
+            + "OPTION letters (A/B/C or A/B/C/D), equally plausible candidates, and a correct answer proven by the planned picture rather than expression, appearance, or category difference. "
             + "Also reject a puzzle whose question, setup, choices, or reveal needs advanced English: a seven-year-old must understand the words on first read. "
             + "Audit the complete collection for variety: reject an episode if its puzzles repeat a setting, premise, visual mechanism, clue type, "
             + "question shape, or reveal logic, or if it falls back on stock robot/cardboard, winding-key, missing-shadow, reflection, or disguised-ghost patterns without an explicit brief reason. "
@@ -334,11 +336,12 @@ class StudioAi {
             and parents. Keep the polished 2D mystery-comic style: natural anatomy, refined ink contours, rich teal,
             warm amber and coral, atmospheric light, engaging characters, and detailed but calm scenery. It must feel
             vibrant and intelligent, never preschool, babyish, gloomy, generic, or like stock clip-art.
-            This is a pure, unlabelled scene placed inside a separate application frame. Exactly the three-to-five
+            This is a pure, unlabelled scene placed inside a separate application frame. Exactly three or four
             candidate subjects specified in the scene plan must appear left-to-right in matching OPTION order.
-            Treat each candidate as an equal-width lane with clear space between lanes. Leave the top 12 percent of
-            every candidate lane visually quiet—sky, wall, or background only—so the application can place one small
-            OPTION letter above that subject without covering a face or a clue. No other candidate-like
+            Treat each candidate as an equal-width lane with clear space between lanes. Leave the bottom 16 percent of
+            every candidate lane visually quiet—floor, table edge, or background only—so the application can place one
+            OPTION letter below that subject without covering a face or a clue. Keep the decisive clue above this quiet strip.
+            No other candidate-like
             people, mannequins, portraits, or background figures that could be mistaken for an option. Show all
             full bodies and any floor/shadow/reflection evidence completely inside the canvas. The important proof
             must be large, sharp, physically coherent, and visible at phone size—not hidden, covered, cropped,
@@ -404,7 +407,7 @@ class StudioAi {
         String prompt = """
             Act as a strict production art director. Compare this raw, unlabelled 16:9 puzzle illustration to the
             canonical scene plan below. This is a CONFORMANCE check, not the final blind puzzle solve.
-            Accept only if: exactly the required 3–5 candidates are present in the required left-to-right order;
+            Accept only if: exactly 3 or 4 candidates are present in the required left-to-right order;
             no confusing extra candidate-like figures exist; all candidates and proof objects are fully visible;
             the stated physical clue is visibly real, readable at phone size, and unique to the intended candidate;
             the remaining candidates visibly show the ordinary counterpart; anatomy, lighting, shadows and
@@ -546,8 +549,8 @@ class StudioAi {
         return direction == null || direction.isBlank() ? "" : "\n\nOperator direction for this stage (honor it unless it conflicts with safety or required output format):\n" + direction.trim();
     }
     private static String recentTitleSuffix(String titles) {
-        return titles == null || titles.isBlank() ? "" : "\n\nRECENT PUZZLE TITLES — HARD NO-REPEAT LIST:\n"
-            + "Do not repeat or lightly rephrase a title below. Make the premise, setting, clue mechanism, question shape, and reveal logic genuinely different from this recent collection.\n"
+        return titles == null || titles.isBlank() ? "" : "\n\nRECENT PUZZLE HISTORY — HARD NO-REPEAT LIST (TITLE, PREMISE, QUESTION, REVEAL LOGIC):\n"
+            + "Do not repeat or lightly rephrase any listed puzzle. Compare concepts, not just titles: make the premise, setting, clue mechanism, question shape, and reveal logic genuinely different from this recent collection. Do not use the same base setup with changed characters or props.\n"
             + titles.trim();
     }
 }
