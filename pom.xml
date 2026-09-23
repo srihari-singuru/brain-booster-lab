@@ -11,7 +11,7 @@
         <relativePath/>
     </parent>
 
-    <groupId>com.brainboosterlab</groupId>
+    <groupId>com.puzzlepop</groupId>
     <artifactId>puzzle-pop</artifactId>
     <version>0.0.1-SNAPSHOT</version>
     <name>Puzzle Pop</name>
