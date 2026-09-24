@@ -13,10 +13,10 @@ import java.util.Base64;
 import javax.imageio.ImageIO;
 
 import com.openai.client.OpenAIClient;
-import com.openai.client.okhttp.OpenAIOkHttpClient;
 import com.openai.models.images.ImageGenerateParams;
 import com.openai.models.images.Image;
 import com.openai.models.images.ImagesResponse;
+import com.brainboosterlab.channel.OpenAiClientFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
@@ -34,21 +34,20 @@ class OpenAiPuzzleArtworkGenerator implements PuzzleArtworkGenerator {
         if (properties.model() == null || properties.model().isBlank()) {
             throw new IllegalStateException("OPENAI_IMAGE_MODEL must be set when ARTWORK_MODE=live");
         }
-        this.client = OpenAIOkHttpClient.builder().fromEnv().timeout(Duration.ofSeconds(120)).maxRetries(0).build();
+        this.client = OpenAiClientFactory.create(Duration.ofSeconds(120));
         this.properties = properties;
     }
 
     @Override
     public BufferedImage generate(ContentJob job) {
-        String prompt = "Create a polished premium family editorial illustration for a Puzzle Pop visual puzzle. "
-                + "Use the visual quality of a high-end animated feature key frame: confident composition, crisp expressive linework, "
-                + "layered depth, cinematic soft lighting, tactile materials, rich but harmonious color, and clear focal hierarchy. "
-                + "Show a welcoming family-friendly mystery room with two distinct friendly detectives, a small helper robot, "
-                + "a desk, bookshelf, magnifying glass, notebook, lamp, and several believable props. "
-                + "The puzzle clue must be a single, clearly drawable object that is present exactly once and is subtly integrated "
-                + "into the scene so it is fair but not immediately obvious. Follow the PUZZLE and ANSWER fields below as ground truth. "
+        String prompt = "Create a polished premium 16:9 family illustration that depicts the exact story and visual challenge in the generated script below. "
+                + "Use crisp expressive linework, layered depth, warm cinematic light, tactile materials, rich harmonious color, and clear focal hierarchy. "
+                + "Do not add a stock detective room, robot, cast, props, or clue unless the supplied story explicitly calls for them. "
+                + "Show exactly the story's candidates and place its decisive evidence visibly and naturally in the scene. "
+                + "The clue must causally support the exact event asked about: the visible trace/contact must appear on the surface and in the place the action would affect. "
+                + "Do not substitute a similar-looking color or pattern for proof, and do not add an unrelated clue. "
                 + "Do not add words, letters, logos, watermarks, UI, borders, or copyrighted characters. "
-                + "Keep the important action in the central safe area for a 16:9 video crop. "
+                + "Keep all candidates and proof inside a wide central safe area for 16:9 video. "
                 + "Creative brief: " + (job.getPrompt() == null ? "Find one hidden object in the scene." : job.getPrompt())
                 + " Generated puzzle script: " + (job.getScriptText() == null ? "" : job.getScriptText());
         ImageGenerateParams params = ImageGenerateParams.builder()

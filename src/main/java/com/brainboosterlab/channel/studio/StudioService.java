@@ -25,12 +25,15 @@ class StudioService {
                 String lastError, String failedStage, String scriptModel, String responseId, String narrationModel, String narrationResponseId,
                 String narrationGroundingModel, String speechModel, String speechVoice, EpisodeSettings settings, StageInstructions stageInstructions, Instant approvedAt, boolean artworkReady,
                 List<StudioAi.VisualReview> visualReviews, boolean previewReady, boolean finalReady, boolean speechReady, boolean puzzleReviewOverridden,
-                boolean artworkSelectionFinalized, boolean narrationGroundingOverridden) {}
+                boolean artworkSelectionFinalized, boolean narrationGroundingOverridden, YouTubeUploadPack youtubeUploadPack,
+                String youtubeUploadPrompt, String youtubeUploadModel) {}
     private final StudioRepository repository;
     private final StudioAi ai;
     private final NarrationAi narrator;
     private final SpeechAi speaker;
     private final StudioRenderer renderer;
+    private final YouTubeMetadataAi youtubeMetadata;
+    private final YouTubeThumbnailRenderer youtubeThumbnails;
     private final Path root;
     private final EpisodeSettings defaults;
     private final JsonMapper json = JsonMapper.builder().build();
@@ -41,6 +44,7 @@ class StudioService {
     });
     @Autowired
     StudioService(StudioRepository repository, StudioAi ai, NarrationAi narrator, SpeechAi speaker, StudioRenderer renderer,
+                  YouTubeMetadataAi youtubeMetadata, YouTubeThumbnailRenderer youtubeThumbnails,
                   @Value("${brain-booster.studio.output-dir:outputs/studio}") String output,
                   @Value("${brain-booster.generation.model:}") String textModel,
                   @Value("${brain-booster.artwork.model:}") String imageModel,
@@ -48,6 +52,7 @@ class StudioService {
                   @Value("${brain-booster.speech.model:gpt-4o-mini-tts}") String speechModel,
                   @Value("${brain-booster.speech.voice:cedar}") String speechVoice) {
         this.repository = repository; this.ai = ai; this.narrator = narrator; this.speaker = speaker; this.renderer = renderer;
+        this.youtubeMetadata = youtubeMetadata; this.youtubeThumbnails = youtubeThumbnails;
         this.root = Path.of(output).toAbsolutePath().normalize();
         String text = fallback(textModel, "gpt-4o-mini");
         this.defaults = new EpisodeSettings("PUZZLE POP", 3, text, fallback(imageModel, "gpt-image-1"),
@@ -56,7 +61,7 @@ class StudioService {
 
     /** Keeps focused unit tests and local tooling independent of Spring property wiring. */
     StudioService(StudioRepository repository, StudioAi ai, NarrationAi narrator, SpeechAi speaker, StudioRenderer renderer, String output) {
-        this(repository, ai, narrator, speaker, renderer, output, "gpt-4o-mini", "gpt-image-1", "gpt-4o-mini",
+        this(repository, ai, narrator, speaker, renderer, null, null, output, "gpt-4o-mini", "gpt-image-1", "gpt-4o-mini",
             "gpt-4o-mini-tts", "cedar");
     }
 
@@ -73,7 +78,7 @@ class StudioService {
     }
 
     private static boolean active(String status) {
-        return Set.of("GENERATING", "REVIEWING", "NARRATING", "NARRATION_GROUNDING", "SPEAKING", "PREPARING_ART", "RENDERING").contains(status);
+        return Set.of("GENERATING", "REGENERATING_PUZZLES", "REGENERATING_PUZZLE", "REVIEWING", "NARRATING", "NARRATION_GROUNDING", "SPEAKING", "PREPARING_ART", "RENDERING", "PREPARING_UPLOAD_PACK").contains(status);
     }
 
     synchronized View create(String brief) { return create(brief, defaults); }
@@ -88,6 +93,15 @@ class StudioService {
     /** A legacy or partially written record must not make the entire history page unavailable. */
     List<View> list() { return repository.findAllByOrderByCreatedAtDesc().stream().map(this::safeView).toList(); }
     View get(UUID id) { return safeView(find(id)); }
+    String youtubeUploadPrompt(UUID id) {
+        var episode = find(id);
+        require(youtubeMetadata != null, "The YouTube upload-pack service is unavailable");
+        require(episode.approvedAt != null && renderReady(directory(id), "final"),
+            "Approve and render the final video before preparing its YouTube upload prompt");
+        if (episode.youtubeUploadPrompt != null && !episode.youtubeUploadPrompt.isBlank()) return episode.youtubeUploadPrompt;
+        var spec = spec(episode);
+        return youtubeMetadata.defaultPrompt(spec, episode.narrationJson == null ? null : narration(episode, spec), settings(episode).channelName());
+    }
 
     /** The brief remains editable only until its first generated script makes it an auditable production record. */
     synchronized View updateBrief(UUID id, String brief) {
@@ -112,12 +126,15 @@ class StudioService {
         var original = spec(source);
         var failures = reviewFailures(source, original);
         var revision = find(revise(id, original).id());
+        // Retain the source findings while regeneration is in-flight or if it fails.
+        // This keeps the explicit failed-puzzle recovery action available on refresh.
+        revision.reviewJson = source.reviewJson;
         revision.stageInstructionsJson = source.stageInstructionsJson;
-        stage(revision, "GENERATING");
+        stage(revision, "REGENERATING_PUZZLES");
         launch(revision, () -> regenerateReviewedPuzzles(id, revision.id, failures));
         return view(revision);
     }
-    /** Replaces one selected puzzle in a new revision and automatically performs two bounded review passes. */
+    /** Replaces one selected puzzle in a new revision; Review remains a separate manual stage. */
     synchronized View startPuzzleRegeneration(UUID id, int puzzleNumber) {
         var source = find(id);
         require(source.approvedAt == null, "Approved episode is immutable; create a revision");
@@ -125,8 +142,9 @@ class StudioService {
         var original = spec(source);
         require(puzzleNumber >= 1 && puzzleNumber <= original.puzzles().size(), "Choose a valid puzzle number");
         var revision = find(revise(id, original).id());
+        revision.reviewJson = source.reviewJson;
         revision.stageInstructionsJson = source.stageInstructionsJson;
-        stage(revision, "GENERATING");
+        stage(revision, "REGENERATING_PUZZLE");
         launch(revision, () -> regenerateSelectedPuzzle(id, revision.id, puzzleNumber - 1));
         return view(revision);
     }
@@ -231,10 +249,11 @@ class StudioService {
         var original = spec(source);
         var sourceView = view(source);
         require(sourceView.artworkReady(), "Prepare the complete artwork before choosing puzzles");
-        require(sourceView.visualReviews().size() == original.puzzles().size()
-                && sourceView.visualReviews().stream().allMatch(StudioAi.VisualReview::acceptable),
-            "Regenerate all failed artwork before choosing puzzles. A failed image may not contain a safe clue highlight.");
         var positions = selectedPuzzlePositions(requestedPuzzleNumbers, original.puzzles().size());
+        require(sourceView.visualReviews().size() == original.puzzles().size(),
+            "The visual checks are incomplete. Retry the artwork check before choosing puzzles.");
+        for (int position : positions) require(sourceView.visualReviews().get(position).acceptable(),
+            "Puzzle " + (position + 1) + " did not pass the visual check. Regenerate its artwork or select only puzzles that passed.");
         var selectedPuzzles = positions.stream().map(i -> original.puzzles().get(i)).toList();
         var selectedSpec = new EpisodeSpec(original.title(), selectedPuzzles);
         selectedSpec.validate();
@@ -272,6 +291,39 @@ class StudioService {
     }
     synchronized View startSpeech(UUID id) { return start(id, "SPEAKING", () -> speech(id)); }
     synchronized View startRender(UUID id, boolean draft) { return start(id, "RENDERING", () -> render(id, draft)); }
+    synchronized View startYouTubeUploadPack(UUID id, String prompt) {
+        var episode = find(id);
+        require(youtubeMetadata != null && youtubeThumbnails != null, "The YouTube upload-pack service is unavailable");
+        String cleanPrompt = YouTubeMetadataAi.sanitizePrompt(prompt);
+        require(prompt != null && cleanPrompt.length() <= YouTubeMetadataAi.MAX_PROMPT_CHARS,
+            "Upload prompt is over 16000 characters after hidden formatting characters are removed. Shorten the prompt before retrying.");
+        require(renderReady(directory(id), "final") && episode.approvedAt != null,
+            "Approve and render the final video before preparing its YouTube upload details");
+        require(!active(episode.status), "This episode is already working in the background");
+        episode.youtubeUploadPrompt = cleanPrompt.isBlank() ? youtubeMetadata.defaultPrompt(spec(episode),
+            episode.narrationJson == null ? null : narration(episode, spec(episode)), settings(episode).channelName()) : cleanPrompt.trim();
+        episode.youtubeUploadPackJson = null;
+        episode.youtubeUploadModel = null;
+        save(episode);
+        stage(episode, "PREPARING_UPLOAD_PACK");
+        return launch(episode, () -> prepareYouTubeUploadPack(id));
+    }
+
+    private View prepareYouTubeUploadPack(UUID id) {
+        var episode = find(id);
+        try {
+            var spec = spec(episode);
+            EpisodeNarration narration = episode.narrationJson == null ? null : narration(episode, spec);
+            var production = settings(episode);
+            var pack = youtubeMetadata.generate(spec, narration, production.channelName(), production.textModel(), episode.youtubeUploadPrompt);
+            pack.validate(spec);
+            youtubeThumbnails.render(spec, directory(id), production.channelName(), pack);
+            episode.youtubeUploadPackJson = json.writeValueAsString(pack);
+            episode.youtubeUploadModel = youtubeMetadata.model(production.textModel());
+            stage(episode, "UPLOAD_PACK_READY");
+            return view(episode);
+        } catch (Exception ex) { return failed(episode, ex); }
+    }
     synchronized View startHighlight(UUID id, List<SceneOverlay.Region> clues) { return start(id, "PREPARING_ART", () -> highlight(id, clues)); }
     synchronized View startRestyle(UUID id, List<SceneOverlay.Region> clues) { return start(id, "PREPARING_ART", () -> restyle(id, clues)); }
 
@@ -319,7 +371,7 @@ class StudioService {
         requestedSettings.validate();
         var episode = find(id);
         require(episode.approvedAt == null, "Approved episodes are immutable; create a revision to change their settings");
-        if (episode.specJson != null) require(spec(episode).puzzles().size() == requestedSettings.puzzleCount(),
+        if (episode.specJson != null) require(settings(episode).puzzleCount() == requestedSettings.puzzleCount(),
             "Puzzle count belongs to the script. Create a new episode to change it after script generation.");
         episode.settingsJson = json.writeValueAsString(requestedSettings);
         save(episode);
@@ -399,35 +451,34 @@ class StudioService {
             var changed = new LinkedHashSet<Integer>();
             String priorTitles = recentPuzzleTitles(revisionId);
             String model = null, responseId = null;
-            List<Remediation> currentFailures = new ArrayList<>(failures);
-            StudioAi.Review latestReview = null;
-            for (int attempt = 0; attempt < 2; attempt++) {
-                for (var failure : currentFailures) {
-                    String rejectedPuzzle = json.writeValueAsString(original.puzzles().get(failure.index()));
-                    String direction = stageInstructions(source).forAction("generate") + "\n\nREMEDIATION: Replace only puzzle " + (failure.index() + 1)
-                        + ". It failed an independent review. Make a completely fresh picture-first family puzzle with a different setting, clue mechanism, question shape, and answer logic. "
-                        + "Do not reuse this rejected puzzle or its concept: " + rejectedPuzzle + "\nReviewer note: " + trimForPrompt(failure.notes(), 1000);
-                    var draft = ai.generate(source.brief, 1, production.textModel(), direction, priorTitles);
-                    puzzles.set(failure.index(), draft.spec().puzzles().getFirst());
-                    changed.add(failure.index());
-                    priorTitles += "- TITLE: " + draft.spec().puzzles().getFirst().title() + " | QUESTION: " + draft.spec().puzzles().getFirst().question() + '\n';
-                    model = draft.model(); responseId = draft.responseId();
-                }
-                var candidate = new EpisodeSpec(original.title(), List.copyOf(puzzles));
-                candidate.validate();
-                latestReview = ai.review(candidate, production.textModel(), stageInstructions(source).forAction("review"));
-                if (latestReview.passes(candidate)) break;
-                currentFailures = reviewFailuresFrom(latestReview, candidate);
-                // At most one focused correction pass; never loop paid generation indefinitely.
-                if (attempt == 0 && currentFailures.isEmpty()) break;
+            for (var failure : failures) {
+                String rejectedPuzzle = json.writeValueAsString(original.puzzles().get(failure.index()));
+                String alreadyInEpisode = java.util.stream.IntStream.range(0, original.puzzles().size())
+                    .filter(i -> i != failure.index())
+                    .mapToObj(i -> "PUZZLE " + (i + 1) + " CONCEPT TO AVOID: " + puzzleHistoryLine(original.puzzles().get(i)))
+                    .collect(java.util.stream.Collectors.joining("\n"));
+                String direction = stageInstructions(source).forAction("generate") + "\n\nREMEDIATION: Replace only puzzle " + (failure.index() + 1)
+                    + ". It failed an independent review. Keep the brisk, story-led visual mini-mystery format: a fresh, family-safe situation, "
+                    + "a direct question, plausible candidates, and one or two linked, clearly pictured clues that make the answer feel earned. "
+                    + "Keep the deduction medium and fair for a ten-second solve; do not add arbitrary rules or complexity. "
+                    + "Make the new situation, setting, clue object, and question distinct from the rejected puzzle and concepts already in this episode. "
+                    + "Rejected puzzle: " + rejectedPuzzle + "\nOther concepts already in this episode that MUST NOT be repeated:\n" + alreadyInEpisode
+                    + "\nReviewer note: " + trimForPrompt(failure.notes(), 1000);
+                var draft = ai.generate(source.brief, 1, production.textModel(), direction, priorTitles);
+                puzzles.set(failure.index(), draft.spec().puzzles().getFirst());
+                changed.add(failure.index());
+                priorTitles += "- TITLE: " + draft.spec().puzzles().getFirst().title() + " | QUESTION: " + draft.spec().puzzles().getFirst().question() + '\n';
+                model = draft.model(); responseId = draft.responseId();
             }
             var replacement = new EpisodeSpec(original.title(), List.copyOf(puzzles));
+            replacement.validateNewChoices();
             revision.specJson = json.writeValueAsString(replacement);
-            revision.reviewJson = latestReview == null ? null : json.writeValueAsString(latestReview);
+            // Regeneration is its own paid action. The operator explicitly starts Review next.
+            revision.reviewJson = null;
             revision.puzzleReviewOverridden = false;
             revision.scriptModel = model; revision.responseId = responseId;
             for (int index : changed) clearArtworkForPuzzle(directory(revisionId), index);
-            stage(revision, latestReview != null && latestReview.passes(replacement) ? "SCRIPT_REVIEW" : "CHANGES_NEEDED");
+            stage(revision, "SCRIPT_REVIEW");
         } catch (Exception ex) { failed(revision, ex); }
     }
 
@@ -439,35 +490,22 @@ class StudioService {
             var puzzles = new ArrayList<>(original.puzzles());
             var history = recentPuzzleTitles(revisionId) + "\nCURRENT SOURCE EPISODE — do not reuse this selected puzzle or its premise:\n"
                 + puzzleHistoryLine(original.puzzles().get(index));
-            StudioAi.Review latestReview = null;
-            String model = null, responseId = null, reviewerNotes = "The creator requested a fresh replacement even though the saved puzzle may have passed.";
-            for (int attempt = 0; attempt < 2; attempt++) {
-                String direction = stageInstructions(source).forAction("generate") + "\n\nCREATOR REQUEST: Replace puzzle " + (index + 1)
-                    + " only. Make a genuinely different family challenge; do not reuse this premise.\n" + reviewerNotes;
-                var draft = ai.generate(source.brief, 1, production.textModel(), direction, history);
-                puzzles.set(index, draft.spec().puzzles().getFirst());
-                history += "\n" + puzzleHistoryLine(draft.spec().puzzles().getFirst());
-                model = draft.model(); responseId = draft.responseId();
-                var candidate = new EpisodeSpec(original.title(), List.copyOf(puzzles));
-                candidate.validate();
-                latestReview = ai.review(candidate, production.textModel(), stageInstructions(source).forAction("review"));
-                if (latestReview.passes(candidate)) break;
-                var failed = reviewFailuresFrom(latestReview, candidate);
-                reviewerNotes = failed.stream().filter(f -> f.index() == index).map(Remediation::notes).findFirst()
-                    .orElse("The full episode review still reports a fairness, clarity, or variety issue. Replace the selected concept with a clearer, distinct one.");
-                if (attempt == 1) break;
-            }
+            String direction = stageInstructions(source).forAction("generate") + "\n\nCREATOR REQUEST: Replace puzzle " + (index + 1)
+                + " only. Make a genuinely different family challenge; do not reuse this premise. The creator will run Review manually afterward.";
+            var draft = ai.generate(source.brief, 1, production.textModel(), direction, history);
+            puzzles.set(index, draft.spec().puzzles().getFirst());
             var replacement = new EpisodeSpec(original.title(), List.copyOf(puzzles));
+            replacement.validateNewChoices();
             revision.specJson = json.writeValueAsString(replacement);
-            revision.reviewJson = latestReview == null ? null : json.writeValueAsString(latestReview);
+            revision.reviewJson = null;
             revision.puzzleReviewOverridden = false;
-            revision.scriptModel = model; revision.responseId = responseId;
+            revision.scriptModel = draft.model(); revision.responseId = draft.responseId();
             revision.narrationJson = null; revision.narrationReviewJson = null; revision.narrationGroundingJson = null;
             revision.narrationModel = null; revision.narrationResponseId = null; revision.narrationGroundingModel = null;
             revision.narrationGroundingResponseId = null; revision.narrationGroundingOverridden = false;
             revision.speechJson = null; revision.speechModel = null; revision.speechVoice = null;
             clearArtworkForPuzzle(directory(revisionId), index);
-            stage(revision, latestReview != null && latestReview.passes(replacement) ? "SCRIPT_REVIEW" : "CHANGES_NEEDED");
+            stage(revision, "SCRIPT_REVIEW");
         } catch (Exception ex) { failed(revision, ex); }
     }
 
@@ -480,33 +518,27 @@ class StudioService {
         } catch (Exception ex) { failed(revision, ex); }
     }
 
-    private static boolean completeReview(StudioAi.Review review, EpisodeSpec spec) {
-        if (review == null || review.findings() == null || review.findings().size() != spec.puzzles().size()) return false;
-        for (int i = 0; i < review.findings().size(); i++) {
-            var finding = review.findings().get(i);
-            if (finding == null || finding.puzzleNumber() != i + 1) return false;
-        }
-        return true;
+    static String puzzleHistoryLine(EpisodeSpec.Puzzle puzzle) {
+        String candidates = puzzle.choices() == null ? "" : puzzle.choices().stream()
+            .map(choice -> choice.id() + ": " + bounded(choice.label(), 30) + " — " + bounded(choice.statement(), 55))
+            .collect(java.util.stream.Collectors.joining("; "));
+        // Titles and questions alone were not enough to prevent visually different
+        // versions of the same underlying puzzle. Include a bounded clue/scene and
+        // candidate fingerprint in the prompt history, while keeping its total size
+        // governed by recentPuzzleTitles' existing 9k-character cap.
+        return "KIND: " + bounded(puzzle.kind(), 20)
+            + " | TITLE: " + bounded(puzzle.title(), 48)
+            + " | PREMISE: " + bounded(puzzle.setup(), 120)
+            + " | QUESTION: " + bounded(puzzle.question(), 90)
+            + " | CANDIDATES: " + bounded(candidates, 260)
+            + " | REVEAL LOGIC: " + bounded(puzzle.explanation(), 100)
+            + " | VISUAL CLUE/SCENE MECHANISM: " + bounded(puzzle.sceneDescription(), 360);
     }
 
-    private List<Remediation> reviewFailuresFrom(StudioAi.Review review, EpisodeSpec spec) {
-        var failures = new ArrayList<Remediation>();
-        if (review == null || review.findings() == null || review.findings().size() != spec.puzzles().size()) {
-            for (int i = 0; i < spec.puzzles().size(); i++) failures.add(new Remediation(i, "The independent review was incomplete."));
-            return failures;
-        }
-        for (int i = 0; i < review.findings().size(); i++) {
-            var finding = review.findings().get(i);
-            if (finding == null || finding.puzzleNumber() != i + 1 || !finding.fair()
-                || !spec.puzzles().get(i).answerId().equals(finding.independentlySolvedAnswerId()))
-                failures.add(new Remediation(i, finding == null ? "The independent review returned no finding." : finding.notes()));
-        }
-        return List.copyOf(failures);
-    }
-
-    private static String puzzleHistoryLine(EpisodeSpec.Puzzle puzzle) {
-        return "TITLE: " + puzzle.title() + " | PREMISE: " + puzzle.setup() + " | QUESTION: " + puzzle.question()
-            + " | REVEAL LOGIC: " + puzzle.explanation();
+    private static String bounded(String value, int max) {
+        if (value == null) return "";
+        String compact = value.replaceAll("\\s+", " ").trim();
+        return compact.length() <= max ? compact : compact.substring(0, max - 1) + "…";
     }
 
     private void inheritForArtworkRemediation(StudioEpisode source, StudioEpisode revision) {
@@ -591,57 +623,51 @@ class StudioService {
     // Serialize mutations so duplicate clicks cannot launch duplicate paid requests in this local app.
     synchronized View generate(UUID id) {
         StudioEpisode e = find(id);
-        require(e.specJson == null, "This episode already has a script. Create a revision to change it.");
-        boolean recovery = e.lastError != null && (e.lastError.startsWith("OpenAI returned an incomplete structured response")
+        var production = settings(e);
+        EpisodeSpec partial = e.specJson == null ? null : spec(e);
+        int completed = partial == null ? 0 : partial.puzzles().size();
+        require(completed < production.puzzleCount(), "This episode already has its complete puzzle script. Create a revision to change it.");
+        boolean recovery = e.lastError != null && (e.lastError.startsWith("OpenAI returned an incomplete structured puzzle response")
             || e.lastError.contains("OpenAIInvalidDataException"));
         stage(e, "GENERATING");
         try {
-            var production = settings(e);
             String direction = stageInstructions(e).forAction("generate");
-            String recentPuzzleTitles = recentPuzzleTitles(e.id);
-            var draft = recovery
-                ? ai.generateRecovery(e.brief, production.puzzleCount(), production.textModel(), direction, recentPuzzleTitles)
-                : direction.isBlank() && recentPuzzleTitles.isBlank()
-                ? (production.equals(defaults) ? ai.generate(e.brief) : ai.generate(e.brief, production.puzzleCount(), production.textModel()))
-                : ai.generate(e.brief, production.puzzleCount(), production.textModel(), direction, recentPuzzleTitles);
-            EpisodeSpec candidate = draft.spec();
-            candidate.validateNewChoices();
-            e.specJson = json.writeValueAsString(candidate);
-            e.scriptModel = draft.model(); e.responseId = draft.responseId();
-            // The creator still explicitly clicks Generate. Its preflight includes one independent
-            // review and at most one targeted regeneration pass, avoiding a separate paid retry loop.
-            stage(e, "REVIEWING");
-            StudioAi.Review preflight = ai.review(candidate, production.textModel(), stageInstructions(e).forAction("review"));
-            e.reviewJson = json.writeValueAsString(preflight);
-            save(e);
-            if (completeReview(preflight, candidate) && !preflight.passes(candidate)) {
-                var failed = reviewFailuresFrom(preflight, candidate);
-                String history = recentPuzzleTitles(e.id);
-                var puzzles = new ArrayList<>(candidate.puzzles());
-                for (var failure : failed) {
-                    EpisodeSpec.Puzzle rejected = candidate.puzzles().get(failure.index());
-                    String repairDirection = direction + "\n\nPRE-SUBMISSION REVIEW REPAIR: Replace only puzzle " + (failure.index() + 1)
-                        + ". The independent family reviewer rejected its fairness or clarity. Create a genuinely different, medium-to-challenging family puzzle, not a rewrite of this premise.\nRejected puzzle: "
-                        + json.writeValueAsString(rejected) + "\nReviewer notes: " + trimForPrompt(failure.notes(), 1000);
-                    var replacement = ai.generate(e.brief, 1, production.textModel(), repairDirection,
-                        history + "\nREJECTED CONCEPT — do not repeat: " + puzzleHistoryLine(rejected));
-                    EpisodeSpec.Puzzle fresh = replacement.spec().puzzles().getFirst();
-                    puzzles.set(failure.index(), fresh);
-                    history += "\n" + puzzleHistoryLine(fresh);
-                    e.scriptModel = replacement.model(); e.responseId = replacement.responseId();
-                    candidate = new EpisodeSpec(candidate.title(), List.copyOf(puzzles));
-                    e.specJson = json.writeValueAsString(candidate);
-                    save(e);
+            String history = recentPuzzleTitles(e.id);
+            if (partial != null) for (EpisodeSpec.Puzzle puzzle : partial.puzzles())
+                history += "- CURRENT EPISODE (already saved; do not repeat): " + puzzleHistoryLine(puzzle) + '\n';
+            String title = partial == null ? "Fresh Family Puzzle Collection" : partial.title();
+            for (int number = completed + 1; number <= production.puzzleCount(); number++) {
+                String slotDirection = "\n\nEPISODE POSITION " + number + " OF " + production.puzzleCount()
+                    + ". Write this as a brisk, story-led visual challenge, not an abstract worksheet. Before drafting, compare "
+                    + "the story, clue and reveal against the supplied history. Choose a genuinely fresh situation and avoid "
+                    + "repeating the immediately previous question shape or clue mechanism. Vary the kind of story across this "
+                    + "episode, but do not force a strange rule or complicated deduction just to appear novel. Keep the clue "
+                    + "clear, fair, visible and satisfying in a ten-second solve.";
+                var draft = recovery && number == completed + 1
+                    ? ai.generateRecovery(e.brief, 1, production.textModel(), direction + slotDirection, history)
+                    : ai.generate(e.brief, 1, production.textModel(), direction + slotDirection, history);
+                EpisodeSpec.Puzzle puzzle = draft.spec().puzzles().getFirst();
+                var puzzles = new ArrayList<>(partial == null ? List.<EpisodeSpec.Puzzle>of() : partial.puzzles());
+                puzzles.add(puzzle);
+                var candidate = new EpisodeSpec(title, List.copyOf(puzzles));
+                try { candidate.validateNewChoices(); }
+                catch (Exception ex) {
+                    throw new IllegalArgumentException("Puzzle " + number + " did not pass local format checks: " + ex.getMessage()
+                        + ". " + completed + " of " + production.puzzleCount() + " valid puzzles are saved; choose Continue to retry only the unfinished portion.", ex);
                 }
-                candidate = new EpisodeSpec(candidate.title(), List.copyOf(puzzles));
-                candidate.validateNewChoices();
+                partial = candidate;
                 e.specJson = json.writeValueAsString(candidate);
-                stage(e, "REVIEWING");
-                preflight = ai.review(candidate, production.textModel(), stageInstructions(e).forAction("review"));
+                e.scriptModel = draft.model(); e.responseId = draft.responseId();
+                save(e); // Preserve each valid paid result before spending on the next puzzle.
+                completed++;
+                history += "- CURRENT EPISODE (already saved; do not repeat): " + puzzleHistoryLine(puzzle) + '\n';
+                recovery = false;
             }
-            e.reviewJson = json.writeValueAsString(preflight);
+            e.reviewJson = null;
             e.puzzleReviewOverridden = false;
-            stage(e, preflight.passes(candidate) ? "SCRIPT_REVIEW" : "CHANGES_NEEDED");
+            // Puzzle generation must not spend again on Review or silently replace rejected ideas.
+            // Those are separate, creator-clicked stages with separate progress and cost visibility.
+            stage(e, "SCRIPT_REVIEW");
             return view(e);
         } catch (Exception ex) { return failed(e, ex); }
     }
@@ -650,6 +676,7 @@ class StudioService {
         StudioEpisode e = find(id);
         require(e.approvedAt == null, "Approved episode is immutable; create a revision");
         var spec = spec(e);
+        require(spec.puzzles().size() == settings(e).puzzleCount(), "Finish generating all configured puzzles before review.");
         stage(e, "REVIEWING");
         try {
             var production = settings(e);
@@ -928,7 +955,7 @@ class StudioService {
 
     Path media(UUID id, String filename) {
         find(id);
-        require(filename.matches("(?:art|question|reveal)-[0-9]+\\.png|(?:provenance|visual-review)-[0-9]+\\.json|(?:preview|final)(?:-puzzle-[0-9]+)?\\.mp4|narration\\.txt|speech\\.m4a|ai-voice-disclosure\\.txt"),
+        require(filename.matches("(?:art|question|reveal)-[0-9]+\\.png|(?:provenance|visual-review)-[0-9]+\\.json|(?:preview|final)(?:-puzzle-[0-9]+)?\\.mp4|youtube-thumbnail-[1-3]\\.jpg|narration\\.txt|speech\\.m4a|ai-voice-disclosure\\.txt"),
             "Unknown media asset");
         Path path = directory(id).resolve(filename);
         if (!Files.isRegularFile(path)) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Asset is not ready");
@@ -1132,14 +1159,19 @@ class StudioService {
     private void save(StudioEpisode e) { e.version = repository.saveAndFlush(e).version; }
     private void stage(StudioEpisode e, String status) { e.status = status; e.lastError = null; e.failedStage = null; save(e); }
     private View failed(StudioEpisode e, Exception exception) {
-        e.failedStage = e.status;
+        String failedStage = e.status;
+        e.failedStage = failedStage;
         e.status = "FAILED";
         // Never persist raw HTTP bodies/headers, which can contain credentials or signed URLs.
         String type = exception.getClass().getSimpleName();
         e.lastError = timedOut(exception) || "OpenAIIoException".equals(type)
             ? "This stage exceeded its request deadline. No partial response was accepted; retry manually when ready."
             : "OpenAIInvalidDataException".equals(type)
-            ? "OpenAI returned an incomplete structured response; no puzzle script was saved. Retry manually to send a shorter recovery request."
+            ? e.specJson != null && "REVIEWING".equals(failedStage)
+                ? "OpenAI returned an incomplete structured review response. Your generated puzzles are saved; no puzzles were automatically regenerated. Run Review manually when ready."
+                : e.specJson != null
+                    ? "OpenAI returned an incomplete response during this stage. Your saved puzzles and previous results are retained. Retry manually when ready."
+                    : "OpenAI returned an incomplete structured puzzle response. No complete puzzle set was saved; retry generation manually when ready."
             : exception instanceof org.springframework.web.server.ResponseStatusException response && response.getReason() != null
             ? response.getReason()
             : exception instanceof IllegalArgumentException ? exception.getMessage()
@@ -1154,7 +1186,9 @@ class StudioService {
         var reviews = new ArrayList<StudioAi.VisualReview>();
         int puzzleCount = e.specJson == null ? settings(e).puzzleCount() : spec(e).puzzles().size();
         for (int i = 0; i < puzzleCount; i++) {
-            ready &= Files.isRegularFile(dir.resolve("question-" + i + ".png")) && Files.isRegularFile(dir.resolve("art-" + i + ".png"));
+            boolean hasArtwork = Files.isRegularFile(dir.resolve("question-" + i + ".png"))
+                && Files.isRegularFile(dir.resolve("art-" + i + ".png"));
+            ready &= hasArtwork;
             Path report = dir.resolve("visual-review-" + i + ".json");
             if (Files.isRegularFile(report)) {
                 try {
@@ -1164,7 +1198,7 @@ class StudioService {
                     reviews.add(json.readValue(Files.readString(report), StudioAi.VisualReview.class));
                 }
                 catch (Exception ex) { reviews.add(new StudioAi.VisualReview(false, "Unreadable visual review; inspection required.")); }
-            }
+            } else if (hasArtwork) reviews.add(new StudioAi.VisualReview(false, "Visual check is missing; repair or recheck this artwork before selecting it."));
         }
         EpisodeSpeech speech = null;
         try { if (e.speechJson != null) speech = speech(e, e.specJson == null ? null : spec(e)); }
@@ -1177,7 +1211,9 @@ class StudioService {
             e.narrationGroundingJson == null ? null : json.readValue(e.narrationGroundingJson, NarrationGrounding.class), speech, e.lastError, e.failedStage,
             e.scriptModel, e.responseId, e.narrationModel, e.narrationResponseId, e.narrationGroundingModel, e.speechModel, e.speechVoice, settings(e), stageInstructions(e),
             e.approvedAt, ready, reviews, renderReady(dir, "preview"), renderReady(dir, "final"), speechReady, e.puzzleReviewOverridden,
-            e.artworkSelectionFinalized, e.narrationGroundingOverridden);
+            e.artworkSelectionFinalized, e.narrationGroundingOverridden,
+            e.youtubeUploadPackJson == null ? null : json.readValue(e.youtubeUploadPackJson, YouTubeUploadPack.class),
+            e.youtubeUploadPrompt, e.youtubeUploadModel);
     }
     private View safeView(StudioEpisode episode) {
         try { return view(episode); }
@@ -1189,7 +1225,7 @@ class StudioService {
                 "This older saved episode no longer matches the current puzzle format. Its files are retained, but create a new episode to continue.", episode.failedStage,
                 episode.scriptModel, episode.responseId, episode.narrationModel, episode.narrationResponseId,
                 episode.narrationGroundingModel, episode.speechModel, episode.speechVoice, savedSettings, StageInstructions.EMPTY, episode.approvedAt,
-                false, List.of(), false, false, false, false, false, false);
+                false, List.of(), false, false, false, false, false, false, null, episode.youtubeUploadPrompt, episode.youtubeUploadModel);
         }
     }
 

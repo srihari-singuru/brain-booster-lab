@@ -11,8 +11,8 @@ public record EpisodeSpec(String title, List<Puzzle> puzzles) {
                          String explanation, String sceneDescription, int thinkSeconds) {}
     public void validate() {
         text(title, 65, "Episode title");
-        require(puzzles != null && puzzles.size() >= 1 && puzzles.size() <= 10,
-            "An episode must contain between 1 and 10 puzzles");
+        require(puzzles != null && puzzles.size() >= 1 && puzzles.size() <= EpisodeSettings.MAX_PUZZLE_COUNT,
+            "An episode must contain between 1 and " + EpisodeSettings.MAX_PUZZLE_COUNT + " puzzles");
         var kinds = new HashSet<String>();
         for (Puzzle p : puzzles) {
             require(p != null, "Puzzle is missing");
@@ -40,9 +40,9 @@ public record EpisodeSpec(String title, List<Puzzle> puzzles) {
                 && p.answerId().charAt(0) >= 'A' && p.answerId().charAt(0) < 'A' + p.choices().size(),
                 "Answer must refer to a choice");
             text(p.explanation(), visual ? 85 : 300, "Explanation");
-            require(!visual || p.explanation().trim().split("\\s+").length <= 14, "Visual reveals must be fourteen words or fewer");
+            require(!visual || p.explanation().trim().split("\\s+").length <= 18, "Visual reveals must be eighteen words or fewer");
             text(p.sceneDescription(), 1600, "Scene description");
-            require(p.thinkSeconds() >= 8 && p.thinkSeconds() <= (visual ? 15 : 25), "Thinking time outside supported range");
+            require(p.thinkSeconds() >= 10 && p.thinkSeconds() <= (visual ? 15 : 25), "Thinking time outside supported range (minimum 10 seconds)");
         }
     }
     /** Newly generated content is limited to 3–4 choices; validate() keeps older saved 5-choice records readable. */

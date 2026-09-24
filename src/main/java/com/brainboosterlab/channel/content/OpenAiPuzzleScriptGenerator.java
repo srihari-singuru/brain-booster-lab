@@ -1,10 +1,9 @@
 package com.brainboosterlab.channel.content;
 
 import com.openai.client.OpenAIClient;
-import com.openai.client.okhttp.OpenAIOkHttpClient;
 import com.openai.models.responses.Response;
 import com.openai.models.responses.ResponseCreateParams;
-import java.time.Duration;
+import com.brainboosterlab.channel.OpenAiClientFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
@@ -19,21 +18,23 @@ class OpenAiPuzzleScriptGenerator implements PuzzleScriptGenerator {
         if (properties.model() == null || properties.model().isBlank()) {
             throw new IllegalStateException("OPENAI_MODEL must be set when GENERATION_MODE=live");
         }
-        this.client = OpenAIOkHttpClient.builder().fromEnv().timeout(Duration.ofSeconds(120)).maxRetries(0).build();
+        this.client = OpenAiClientFactory.create(java.time.Duration.ofSeconds(120));
         this.model = properties.model();
     }
 
     @Override
     public GeneratedScript generate(ContentJob job) {
-        String input = "Create a premium family-friendly Puzzle Pop visual puzzle script.\n"
+        String input = "Create one original, premium family-friendly Puzzle Pop visual mini-mystery.\n"
                 + "Title: " + job.getTitle() + "\n"
-                + "Creative brief: " + (job.getPrompt() == null ? "Use a visual detective riddle." : job.getPrompt()) + "\n"
+                + "Creative brief: " + (job.getPrompt() == null ? "Tell a short, playful story that leads to one fair visual mystery." : job.getPrompt()) + "\n"
                 + "Use this exact plain-text structure, with one field per line and no markdown: TITLE:, HOOK:, PUZZLE:, PAUSE:, ANSWER:, CTA:.\n"
-                + "Design one fair visual challenge that can be solved from the artwork in five seconds."
-                + " The PUZZLE must name one concrete clue object and where to look."
-                + " The ANSWER must describe that same object and exact location, with no new object or location."
-                + " Keep every field concise, exciting, and easy to read on a phone."
-                + " Avoid violence, frightening imagery, impossible trick questions, copyrighted characters, and claims such as '99% fail'.";
+                + "Write a brisk story setup, one direct question, three or four plausible OPTION choices (A/B/C or A/B/C/D),"
+                + " a fair medium-difficulty inference for children 6–18 solving with parents, and a satisfying answer reveal."
+                + " The thinking round is exactly ten seconds; story speech length is separate and can follow its measured voice duration."
+                + " The visible clue must causally prove the exact action asked about: its mark/contact must be on the surface and in the place the action would actually affect."
+                + " A matching color or pattern alone is not proof. State any simple fantasy rule and show it in the scene."
+                + " Use simple spoken English and vivid, safe, varied stories. Never repeat or lightly rephrase the prior puzzle history or reference transcript."
+                + " Keep every field concise, exciting, and easy to understand. Avoid violence, frightening imagery, impossible trick questions, copyrighted characters, and claims such as '99% fail'.";
         ResponseCreateParams params = ResponseCreateParams.builder()
                 .model(model)
                 .input(input)

@@ -11,6 +11,11 @@ final class KidsFrameRenderer {
     private static final Color YELLOW = new Color(255, 222, 39);
     private static final Color OUTLINE = new Color(15, 23, 35);
     private static final Color CORRECT = new Color(113, 244, 153);
+    private static final int SIDE_BRAND_MAX_TEXT_LENGTH = 500;
+    private static final int SIDE_BRAND_MIN_FONT_SIZE = 15;
+    private static final int SIDE_BRAND_GAP = 28;
+    private static final int SIDE_BRAND_ICON_WIDTH = 64;
+    private static final int SIDE_BRAND_ICON_HEIGHT = 52;
     /* A large, edge-to-edge picture window makes the artwork the star of every frame. */
     static final Rectangle ART_STAGE = new Rectangle(160, 145, 1600, 900);
     private static final Rectangle ART_PANEL = new Rectangle(144, 129, 1632, 932);
@@ -163,27 +168,37 @@ final class KidsFrameRenderer {
         centered(g, Integer.toString(number), new Rectangle(cx - 42, cy - 42, 84, 84), 66, OUTLINE);
     }
 
+    record SideBrandLayout(Font font, int textWidth, int textCenterY, int iconTop) {}
+
+    static SideBrandLayout sideBrandLayout(Graphics2D g, String channelName, int groupCenterY) {
+        String name = channelName.toUpperCase(Locale.ROOT);
+        Font font = VideoTypography.display(30);
+        int width = g.getFontMetrics(font).stringWidth(name);
+        while (width > SIDE_BRAND_MAX_TEXT_LENGTH && font.getSize() > SIDE_BRAND_MIN_FONT_SIZE) {
+            font = VideoTypography.display(font.getSize() - 1);
+            width = g.getFontMetrics(font).stringWidth(name);
+        }
+        int groupHeight = width + SIDE_BRAND_GAP + SIDE_BRAND_ICON_HEIGHT;
+        int top = groupCenterY - groupHeight / 2;
+        return new SideBrandLayout(font, width, top + width / 2, top + width + SIDE_BRAND_GAP);
+    }
+
     private static void drawSideBrand(Graphics2D g, int x, int centerY, boolean left, String channelName) {
         AffineTransform transform = g.getTransform();
         try {
-            g.rotate(left ? -Math.PI / 2 : Math.PI / 2, x, centerY);
             String name = channelName.toUpperCase(Locale.ROOT);
-            g.setFont(VideoTypography.display(30));
-            int width = g.getFontMetrics().stringWidth(name);
-            int baseline = centerY + (g.getFontMetrics().getAscent() - g.getFontMetrics().getDescent()) / 2;
-            g.setColor(new Color(10, 47, 94, 120)); g.drawString(name, x - width / 2 + 3, baseline + 3);
-            g.setColor(new Color(255, 255, 255, 235)); g.drawString(name, x - width / 2, baseline);
+            SideBrandLayout layout = sideBrandLayout(g, name, centerY);
+            g.rotate(left ? -Math.PI / 2 : Math.PI / 2, x, layout.textCenterY());
+            g.setFont(layout.font());
+            // The rotation places the text in its own vertical slot, with a deliberate gap
+            // before the official YouTube mark below it.
+            int baseline = layout.textCenterY() + (g.getFontMetrics().getAscent() - g.getFontMetrics().getDescent()) / 2;
+            g.setColor(new Color(10, 47, 94, 120)); g.drawString(name, x - layout.textWidth() / 2 + 3, baseline + 3);
+            g.setColor(new Color(255, 255, 255, 235)); g.drawString(name, x - layout.textWidth() / 2, baseline);
         } finally { g.setTransform(transform); }
-        drawYoutubeMark(g, x - 25, centerY + 94, 50, 36);
-    }
-
-    private static void drawYoutubeMark(Graphics2D g, int x, int y, int width, int height) {
-        g.setColor(new Color(12, 32, 66, 92)); g.fillRoundRect(x - 3, y + 3, width + 6, height + 6, 15, 15);
-        g.setColor(new Color(255, 0, 51)); g.fillRoundRect(x, y, width, height, 13, 13);
-        int inset = width / 3;
-        Polygon play = new Polygon(new int[]{x + inset, x + inset, x + width - inset},
-            new int[]{y + height / 4, y + 3 * height / 4, y + height / 2}, 3);
-        g.setColor(Color.WHITE); g.fillPolygon(play);
+        SideBrandLayout layout = sideBrandLayout(g, channelName, centerY);
+        VideoIcons.youtubeMark(g, x - SIDE_BRAND_ICON_WIDTH / 2, layout.iconTop(),
+            SIDE_BRAND_ICON_WIDTH, SIDE_BRAND_ICON_HEIGHT);
     }
 
     /** Never let the animated ring be clipped at the lower edge of a full-width scene stage. */

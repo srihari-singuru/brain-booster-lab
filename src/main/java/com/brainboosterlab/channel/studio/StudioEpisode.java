@@ -19,6 +19,9 @@ class StudioEpisode {
     @Column(columnDefinition = "text") String narrationGroundingJson;
     @Column(nullable = false) boolean narrationGroundingOverridden;
     @Column(columnDefinition = "text") String speechJson;
+    @Column(columnDefinition = "text") String youtubeUploadPackJson;
+    @Column(columnDefinition = "text") String youtubeUploadPrompt;
+    String youtubeUploadModel;
     @Column(columnDefinition = "text") String settingsJson;
     @Column(columnDefinition = "text") String stageInstructionsJson;
     @Column(columnDefinition = "text") String lastError;

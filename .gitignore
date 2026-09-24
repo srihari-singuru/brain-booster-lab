@@ -1,8 +1,20 @@
 target/
+
+# Local secrets: never commit real environment files (the template stays tracked)
 .env
+.env.*
+!.env.example
+
+# IDE and OS files
 .idea/
+.vscode/
 *.iml
 .DS_Store
+
+# Logs and temporary render/API files
+*.log
+*.pending
+*.pending.*
 
 # Generated media and local job artifacts
 media/

@@ -17,7 +17,7 @@ public record EpisodeNarration(String episodeOpening, List<PuzzleNarration> puzz
             EpisodeSpec.require(beat != null && beat.puzzleNumber() == i + 1,
                 "Narration puzzle numbers must be consecutive and in order");
             // Natural voice duration now controls question and answer visuals; the timer remains separate.
-            line(beat.questionLeadIn(), 20, 25, "Question lead-in");
+            line(beat.questionLeadIn(), 24, 32, "Question lead-in");
             line(beat.timerCue(), 5, 7, "Timer cue");
             // The measured local audio duration controls the reveal visual rather than a fixed slot.
             line(beat.revealExplanation(), 15, 25, "Reveal explanation");
@@ -36,7 +36,7 @@ public record EpisodeNarration(String episodeOpening, List<PuzzleNarration> puzz
     }
 
     private static void line(String text, int minimumWords, int maximumWords, String label) {
-        EpisodeSpec.require(text != null && !text.isBlank() && text.length() <= 240,
+        EpisodeSpec.require(text != null && !text.isBlank() && text.length() <= 320,
             label + " is missing or too long");
         EpisodeSpec.require(text.codePoints().allMatch(c -> c >= 32 && c != 127),
             label + " must be a single spoken line");

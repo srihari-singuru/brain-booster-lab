@@ -9,6 +9,20 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.*;
 
 class StudioQualityTest {
+    @Test void supportsUpToTwentyPuzzlesInEpisodeAndProductionSettings() {
+        var settings = new EpisodeSettings("Puzzle Pop", 20, "text", "image", "narration", "speech", "cedar", 1);
+        assertThatCode(settings::validate).doesNotThrowAnyException();
+        assertThatThrownBy(() -> new EpisodeSettings("Puzzle Pop", 21, "text", "image", "narration", "speech", "cedar", 1).validate())
+            .hasMessageContaining("1 and 20");
+
+        var puzzle = PilotFixtures.kids().puzzles().getFirst();
+        var twenty = new ArrayList<EpisodeSpec.Puzzle>();
+        for (int i = 0; i < 20; i++) twenty.add(puzzle);
+        assertThatCode(() -> new EpisodeSpec("Twenty puzzles", twenty).validate()).doesNotThrowAnyException();
+        twenty.add(puzzle);
+        assertThatThrownBy(() -> new EpisodeSpec("Twenty-one puzzles", twenty).validate()).hasMessageContaining("1 and 20");
+    }
+    @Test void visualThinkingTimerUsesTenSeconds() { assertThat(StudioRenderer.VISUAL_QUESTION_SECONDS).isEqualTo(10); }
     @Test void fixturesHaveThreeDistinctReasoningPuzzles() { PilotFixtures.sample().validate(); }
     @Test void sdkAcceptsOurStructuredSchemas() {
         assertThatCode(() -> ResponseCreateParams.builder().model("test-model").input("test").text(EpisodeSpec.class).build()).doesNotThrowAnyException();
@@ -33,6 +47,17 @@ class StudioQualityTest {
         var puzzles = new ArrayList<>(original.puzzles());
         puzzles.set(0, new EpisodeSpec.Puzzle(p.kind(),p.title(),p.setup(),"Find the hidden key",p.facts(),p.choices(),p.answerId(),p.explanation(),p.sceneDescription(),15));
         assertThatThrownBy(() -> new EpisodeSpec(original.title(),puzzles).validate()).hasMessageContaining("reasoning question");
+    }
+    @Test void acceptsNaturalVisualRevealWithSmallCountOverageButKeepsHardCeiling() {
+        var base = PilotFixtures.kids(); var puzzle = base.puzzles().getFirst();
+        String sixteenWords = "Red kite follows the clear path to the open window before the others can turn back.";
+        var adjusted = new EpisodeSpec.Puzzle(puzzle.kind(), puzzle.title(), puzzle.setup(), puzzle.question(), puzzle.facts(),
+            puzzle.choices(), puzzle.answerId(), sixteenWords, puzzle.sceneDescription(), puzzle.thinkSeconds());
+        assertThatCode(() -> new EpisodeSpec("Test", List.of(adjusted)).validate()).doesNotThrowAnyException();
+        String tooLong = "We see a red hat and a blue hat by the big box, but the small hat is wet.";
+        var excessive = new EpisodeSpec.Puzzle(puzzle.kind(), puzzle.title(), puzzle.setup(), puzzle.question(), puzzle.facts(),
+            puzzle.choices(), puzzle.answerId(), tooLong, puzzle.sceneDescription(), puzzle.thinkSeconds());
+        assertThatThrownBy(() -> new EpisodeSpec("Test", List.of(excessive)).validate()).hasMessageContaining("eighteen words");
     }
     @Test void everyFixtureFrameFitsWithoutDroppingEvidence() {
         var renderer = new StudioRenderer("ffmpeg");

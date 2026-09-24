@@ -1,26 +1,33 @@
 package com.brainboosterlab.channel.studio;
 
-import java.awt.Graphics2D;
-import java.awt.Color;
 import java.awt.AlphaComposite;
+import java.awt.Color;
+import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import javax.imageio.ImageIO;
+import org.apache.batik.transcoder.TranscoderInput;
+import org.apache.batik.transcoder.TranscoderOutput;
+import org.apache.batik.transcoder.image.PNGTranscoder;
 
-/** Official Google Material icons, bundled locally so rendering never depends on the network. */
+/** Crisp, locally bundled icons for video-rendered calls to action. */
 final class VideoIcons {
-    private static final BufferedImage LIKE = load("like");
-    private static final BufferedImage SHARE = load("share");
-    private static final BufferedImage SUBSCRIBE = load("subscribe");
-    private static final BufferedImage LIKE_COLOR = tint(LIKE, new Color(29, 122, 226));
-    private static final BufferedImage SHARE_COLOR = tint(SHARE, new Color(18, 157, 170));
-    private static final BufferedImage SUBSCRIBE_COLOR = tint(SUBSCRIBE, new Color(242, 45, 64));
+    private static final int RASTER_SIZE = 512;
+    private static final BufferedImage LIKE = tint(loadSvg("like"), new Color(29, 122, 226));
+    private static final BufferedImage SHARE = tint(loadSvg("share"), new Color(18, 157, 170));
+    private static final BufferedImage COMMENT = tint(loadSvg("comment"), new Color(37, 110, 226));
+    private static final BufferedImage YOUTUBE = loadPng("youtube");
 
     private VideoIcons() {}
 
-    static void like(Graphics2D g, int x, int y, int size) { draw(g, LIKE_COLOR, x, y, size); }
-    static void share(Graphics2D g, int x, int y, int size) { draw(g, SHARE_COLOR, x, y, size); }
-    static void subscribe(Graphics2D g, int x, int y, int size) { draw(g, SUBSCRIBE_COLOR, x, y, size); }
+    static void like(Graphics2D g, int x, int y, int size) { draw(g, LIKE, x, y, size); }
+    static void share(Graphics2D g, int x, int y, int size) { draw(g, SHARE, x, y, size); }
+    static void comment(Graphics2D g, int x, int y, int size) { draw(g, COMMENT, x, y, size); }
+
+    /** Draw the official full-colour YouTube play mark without stretching or recolouring it. */
+    static void subscribe(Graphics2D g, int x, int y, int size) { youtubeMark(g, x, y, size, size); }
 
     private static BufferedImage tint(BufferedImage source, Color color) {
         BufferedImage result = new BufferedImage(source.getWidth(), source.getHeight(), BufferedImage.TYPE_INT_ARGB);
@@ -39,14 +46,39 @@ final class VideoIcons {
         g.drawImage(icon, x, y, size, size, null);
     }
 
-    private static BufferedImage load(String name) {
-        try (InputStream source = VideoIcons.class.getResourceAsStream("/video-icons/" + name + ".png")) {
-            if (source == null) throw new IllegalStateException("Missing bundled video icon: " + name);
-            BufferedImage image = ImageIO.read(source);
-            if (image == null) throw new IllegalStateException("Unreadable bundled video icon: " + name);
+    static void youtubeMark(Graphics2D g, int x, int y, int boxWidth, int boxHeight) {
+        double scale = Math.min((double) boxWidth / YOUTUBE.getWidth(), (double) boxHeight / YOUTUBE.getHeight());
+        int drawWidth = Math.max(1, (int) Math.round(YOUTUBE.getWidth() * scale));
+        int drawHeight = Math.max(1, (int) Math.round(YOUTUBE.getHeight() * scale));
+        g.drawImage(YOUTUBE, x + (boxWidth - drawWidth) / 2, y + (boxHeight - drawHeight) / 2, drawWidth, drawHeight, null);
+    }
+
+    private static BufferedImage loadSvg(String name) {
+        String resource = "/video-icons/" + name + ".svg";
+        try (InputStream source = VideoIcons.class.getResourceAsStream(resource);
+             ByteArrayOutputStream raster = new ByteArrayOutputStream()) {
+            if (source == null) throw new IllegalStateException("Missing bundled video icon: " + resource);
+            PNGTranscoder transcoder = new PNGTranscoder();
+            transcoder.addTranscodingHint(PNGTranscoder.KEY_WIDTH, (float) RASTER_SIZE);
+            transcoder.addTranscodingHint(PNGTranscoder.KEY_HEIGHT, (float) RASTER_SIZE);
+            transcoder.transcode(new TranscoderInput(source), new TranscoderOutput(raster));
+            BufferedImage image = ImageIO.read(new ByteArrayInputStream(raster.toByteArray()));
+            if (image == null) throw new IllegalStateException("Unable to rasterize bundled video icon: " + resource);
             return image;
         } catch (Exception ex) {
-            throw new IllegalStateException("Unable to load bundled video icon: " + name, ex);
+            throw new IllegalStateException("Unable to load bundled video icon: " + resource, ex);
+        }
+    }
+
+    private static BufferedImage loadPng(String name) {
+        String resource = "/video-icons/" + name + ".png";
+        try (InputStream source = VideoIcons.class.getResourceAsStream(resource)) {
+            if (source == null) throw new IllegalStateException("Missing bundled video icon: " + resource);
+            BufferedImage image = ImageIO.read(source);
+            if (image == null) throw new IllegalStateException("Unreadable bundled video icon: " + resource);
+            return image;
+        } catch (Exception ex) {
+            throw new IllegalStateException("Unable to load bundled video icon: " + resource, ex);
         }
     }
 }

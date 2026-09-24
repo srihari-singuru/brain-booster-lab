@@ -18,12 +18,15 @@ class StudioController {
     record RestyleOptions(List<SceneOverlay.Region> clueRegions) {}
     record ArtworkSelection(List<Integer> puzzleNumbers) {}
     record ItemSelection(int puzzleNumber) {}
+    record UploadPackRequest(String prompt) {}
+    record UploadPrompt(String prompt) {}
     private final StudioService studio;
     private final OpenAiModelCatalog models;
     StudioController(StudioService studio, OpenAiModelCatalog models) { this.studio = studio; this.models = models; }
     @GetMapping List<StudioService.View> list() { return studio.list(); }
     @GetMapping("/models") OpenAiModelCatalog.Catalog models() { return models.list(); }
     @GetMapping("/{id}") StudioService.View get(@PathVariable UUID id) { return studio.get(id); }
+    @GetMapping("/{id}/youtube-upload-prompt") UploadPrompt youtubeUploadPrompt(@PathVariable UUID id) { return new UploadPrompt(studio.youtubeUploadPrompt(id)); }
     // JSON-only mutations reject cross-site HTML form submissions; no CORS access is granted.
     @PostMapping(consumes = "application/json") StudioService.View create(@Valid @RequestBody Brief brief) { return studio.create(brief.brief(), brief.settings()); }
     @PutMapping(value = "/{id}/brief", consumes = "application/json") StudioService.View updateBrief(@PathVariable UUID id,
@@ -75,10 +78,12 @@ class StudioController {
     @PostMapping(value = "/{id}/approve", consumes = "application/json") StudioService.View approve(@PathVariable UUID id) { return studio.approve(id); }
     @PostMapping(value = "/{id}/preview", consumes = "application/json") StudioService.View preview(@PathVariable UUID id) { return studio.startRender(id, true); }
     @PostMapping(value = "/{id}/render", consumes = "application/json") StudioService.View render(@PathVariable UUID id) { return studio.startRender(id, false); }
+    @PostMapping(value = "/{id}/youtube-upload-pack", consumes = "application/json") StudioService.View youtubeUploadPack(@PathVariable UUID id,
+        @RequestBody UploadPackRequest request) { return studio.startYouTubeUploadPack(id, request == null ? "" : request.prompt()); }
     @GetMapping("/{id}/media/{name}")
     ResponseEntity<FileSystemResource> media(@PathVariable UUID id, @PathVariable String name) {
         var file = studio.media(id, name);
-        String type = name.endsWith(".mp4") ? "video/mp4" : name.endsWith(".m4a") ? "audio/mp4" : name.endsWith(".png") ? "image/png" : name.endsWith(".txt") ? "text/plain;charset=UTF-8" : "application/json";
+        String type = name.endsWith(".mp4") ? "video/mp4" : name.endsWith(".m4a") ? "audio/mp4" : name.endsWith(".png") ? "image/png" : name.endsWith(".jpg") ? "image/jpeg" : name.endsWith(".txt") ? "text/plain;charset=UTF-8" : "application/json";
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).contentType(MediaType.parseMediaType(type))
             .header("X-Content-Type-Options", "nosniff").body(new FileSystemResource(file));
     }

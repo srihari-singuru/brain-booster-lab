@@ -32,13 +32,15 @@ class StudioRenderIntegrationTest {
         var probe=new ProcessBuilder("ffprobe","-v","error","-show_entries","stream=codec_type,width,height:format=duration","-of","json",video.toString()).start();
         String metadata=new String(probe.getInputStream().readAllBytes(),java.nio.charset.StandardCharsets.UTF_8);
         assertThat(probe.waitFor()).isZero();
-        double expectedSeconds=spec.puzzles().stream().mapToDouble(p->"visual".equals(p.kind())
+        double expectedSeconds=SpeechAi.wavDuration(directory.resolve("cta-intro.wav"))
+            + spec.puzzles().stream().mapToDouble(p->"visual".equals(p.kind())
             ? StudioRenderer.VISUAL_SETUP_SECONDS + StudioRenderer.VISUAL_TIMER_CUE_SECONDS + StudioRenderer.VISUAL_QUESTION_SECONDS + StudioRenderer.VISUAL_REVEAL_SECONDS
             : p.thinkSeconds()+20).sum();
         expectedSeconds+=(spec.puzzles().size()-1)*(double)PuzzleMotion.TRANSITION_TICKS/PuzzleMotion.FPS;
         double actualSeconds=Double.parseDouble(metadata.replaceAll("(?s).*\"duration\"\\s*:\\s*\"([0-9.]+)\".*", "$1"));
         assertThat(actualSeconds).isCloseTo(expectedSeconds, within(.08));
         assertThat(metadata).contains("1920","1080").doesNotContain("audio");
+        assertThat(Files.exists(directory.resolve("preview-intro.mp4"))).isTrue();
         if("visual".equals(spec.puzzles().getFirst().kind())) {
             String manifest=Files.readString(directory.resolve("preview-puzzle-1-frames/frames.txt"));
             assertThat(manifest).contains("option framerate 30","duration 0.033333333");
@@ -71,13 +73,25 @@ class StudioRenderIntegrationTest {
         Path merged = renderer.render(spec, directory, true, speech);
         for (int i = 0; i < tracks.size(); i++)
             assertThat(duration(directory.resolve("preview-puzzle-" + (i + 1) + ".mp4")))
-                .isCloseTo(question[i] + cue[i] + StudioRenderer.VISUAL_QUESTION_SECONDS + reveal[i], within(.08));
+                .isCloseTo(question[i] + cue[i] + StudioRenderer.VISUAL_QUESTION_SECONDS + reveal[i]
+                    + 4 * StudioRenderer.SPEECH_GAP_SECONDS, within(.08));
         for (int i = 0; i < tracks.size(); i++)
             assertThat(audioSampleRate(directory.resolve("puzzle-audio-" + i + ".m4a"))).isEqualTo(StudioRenderer.AUDIO_SAMPLE_RATE);
-        double expected = 0;
-        for (int i = 0; i < tracks.size(); i++) expected += question[i] + cue[i] + StudioRenderer.VISUAL_QUESTION_SECONDS + reveal[i];
-        expected += (tracks.size() - 1) * (double) PuzzleMotion.TRANSITION_TICKS / PuzzleMotion.FPS;
+        double expected = SpeechAi.wavDuration(directory.resolve("cta-intro.wav")) + 2 * StudioRenderer.SPEECH_GAP_SECONDS;
+        for (int i = 0; i < tracks.size(); i++) expected += question[i] + cue[i] + StudioRenderer.VISUAL_QUESTION_SECONDS + reveal[i]
+            + 4 * StudioRenderer.SPEECH_GAP_SECONDS;
+        for (int i = 0; i < tracks.size() - 1; i++) {
+            PuzzleMotion.Cta cta = PuzzleMotion.ctaAfter(tracks.size(), i);
+            expected += cta == null ? (double) PuzzleMotion.TRANSITION_TICKS / PuzzleMotion.FPS
+                : (Math.ceil(SpeechAi.wavDuration(directory.resolve("cta-" + cta.name().toLowerCase(java.util.Locale.ROOT) + ".wav")) * PuzzleMotion.FPS)
+                    + PuzzleMotion.SPEECH_GAP_TICKS) / (double) PuzzleMotion.FPS;
+        }
+        expected += (Math.ceil(SpeechAi.wavDuration(directory.resolve("cta-outro.wav")) * PuzzleMotion.FPS)
+            + PuzzleMotion.SPEECH_GAP_TICKS) / (double) PuzzleMotion.FPS;
         assertThat(duration(merged)).isCloseTo(expected, within(.12));
+        assertThat(Files.readString(directory.resolve("speech-audio.txt"))).contains("speech-intro.m4a", "speech-cta-outro.m4a");
+        assertThat(Files.exists(directory.resolve("preview-intro.mp4"))).isTrue();
+        assertThat(Files.exists(directory.resolve("preview-outro.mp4"))).isTrue();
     }
 
     private static void assumeFfmpeg() throws Exception {

@@ -25,7 +25,7 @@ public class PuzzlePopApplication {
      * from a terminal, IntelliJ, VS Code, or the packaged JAR. Existing shell and JVM
      * settings always win, and nothing from the file is logged.
      */
-    static void loadLocalEnvironment() {
+    public static void loadLocalEnvironment() {
         Path dotenv = Path.of(".env");
         if (!Files.isRegularFile(dotenv)) return;
         try {

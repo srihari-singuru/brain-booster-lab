@@ -1,13 +1,12 @@
 package com.brainboosterlab.channel.studio;
 
 import com.openai.client.OpenAIClient;
-import com.openai.client.okhttp.OpenAIOkHttpClient;
+import com.brainboosterlab.channel.OpenAiClientFactory;
 import com.openai.models.Reasoning;
 import com.openai.models.ReasoningEffort;
 import com.openai.models.responses.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
@@ -44,7 +43,7 @@ class NarrationAi {
                 @Value("${brain-booster.narration.model:}") String narrationModel) {
         this.mode = narrationMode == null || narrationMode.isBlank() ? generationMode : narrationMode;
         this.model = narrationModel == null || narrationModel.isBlank() ? generationModel : narrationModel;
-        this.client = "live".equals(mode) ? OpenAIOkHttpClient.builder().fromEnv().timeout(Duration.ofSeconds(120)).maxRetries(0).build() : null;
+        this.client = "live".equals(mode) ? OpenAiClientFactory.create(java.time.Duration.ofSeconds(120)) : null;
     }
 
     Draft write(EpisodeSpec spec) {
@@ -88,8 +87,8 @@ class NarrationAi {
 
             Use ONLY facts, choices, answer and explanation in the specification. Never invent visual evidence,
             character traits, extra suspects, danger, or a second puzzle rule. Do not use stock pressure such as
-            'only geniuses', shame, panic, or repeated 'are you ready'. Do not say 'find something', 'look closely',
-            or promise that the viewer can see an unclear clue. Address viewers warmly, inclusively, and with genuine
+            'only geniuses', shame, panic, or repeated 'are you ready'. Avoid overusing stock phrases such as
+            'look closely'; never promise that the viewer can see an unclear clue. Address viewers warmly, inclusively, and with genuine
             excitement rather than pressure.
 
             SIMPLE SPOKEN ENGLISH IS REQUIRED. Write for a child aged seven to understand on the first
@@ -100,10 +99,12 @@ class NarrationAi {
 
             Structure rules:
             - episodeOpening: one fresh welcome, 4–28 words. It will be used in a future opening, not today’s video.
-            - for each puzzle, questionLeadIn: 20–25 words, designed for a natural roughly nine-to-ten-second delivery at the chosen voice speed. Its measured voice duration controls the question screen. Set a mini-story and ask
-              the on-screen question naturally, but DO NOT name, label, or hint at the answer or clue. Build a little
-              anticipation without repeating the question word-for-word.
-            - timerCue: 5–7 words. It must invite viewers to take exactly EIGHT seconds. Its measured voice duration plays while the timer holds at 8; the separate fixed eight-second countdown begins immediately after it. Do not count aloud.
+            - for each puzzle, questionLeadIn: 24–32 words, designed for a lively, natural roughly ten-to-fourteen-second
+              delivery at the chosen voice speed. Its measured voice duration controls the question-story screen; it
+              is NOT the thinking countdown. Briefly bring the scene to life, build curiosity, and ask the on-screen
+              question naturally. Do not add new facts or repeat the question word-for-word. Never name, label, or
+              hint at the answer or decisive clue. Keep the wording simple and the pace even across puzzles.
+            - timerCue: 5–7 words. It must invite viewers to take exactly TEN seconds. Its measured voice duration plays while the timer holds at 10; the separate fixed ten-second countdown begins immediately after it. Do not count aloud.
             - revealExplanation: 15–25 words. Its measured voice duration controls the answer screen. Use one or two short, direct sentences; avoid colons, semicolons, ellipses, or dramatic pauses. State the correct choice and the exact
               visible clue/rule that proves it in a lively, natural way that rewards the viewer’s reasoning.
             - episodeClosing: one fresh 4–28-word sign-off for a future ending.
@@ -115,7 +116,7 @@ class NarrationAi {
             PRE-SUBMISSION ACCEPTANCE CHECK — silently check every puzzle beat before returning it. The lead-in
             and timer must not name or telegraph the answer, an OPTION letter, a choice name, or the decisive clue.
             The reveal must use only the correct OPTION letter and must state only the exact proof already supplied
-            in the puzzle specification. Keep the required word ranges, especially a concise 15–25-word answer, natural voice pacing, the fixed eight-second countdown, simple spoken
+            in the puzzle specification. Keep the required word ranges, especially a concise 15–25-word answer, natural voice pacing, the fixed ten-second countdown, simple spoken
             English, family-safe warmth, and a similar spoken density across every puzzle. If a line fails one of
             these checks, rewrite it before returning the structured object. Return narration you expect both the
             independent script editor and final frame-grounding editor to accept without correction.
@@ -155,8 +156,10 @@ class NarrationAi {
             its exact proof, identifying the answer only as the supplied OPTION letter (A through E). It must reject any use of a choice name or label.
             familySafe is true only for warm, age-appropriate, simple language with no pressure, shame, fear, stereotypes or
             unsafe claims. A seven-year-old must understand every line on one listen; reject formal vocabulary, idioms, metaphors,
-            or long tangled sentences. timeFits is true only when lead-in is 20–25 words, timer cue is 5–7 words and explicitly says eight seconds, and reveal is 15–25 words with no colon, semicolon, ellipsis, or dramatic pause. Measured voice duration controls its own question or answer screen; only the countdown is fixed. Be adversarial: reject generic filler, babyish delivery, classroom-like explanation, and ambiguous proof. Put concise actionable feedback
-            in notes. Do not rubber-stamp.
+            or long tangled sentences. timeFits is true only when the story lead-in is 24–32 words, the timer cue is 5–7 words and explicitly says ten seconds, and the reveal is 15–25 words with no colon, semicolon, ellipsis, or dramatic pause. Measured voice duration controls its own question or answer screen; only the countdown is fixed. Be adversarial: reject generic filler, babyish delivery, classroom-like explanation, and ambiguous proof. Put concise actionable feedback
+            in notes. timeFits accepts a 24–32-word story lead-in because its actual speech duration determines the
+            story-screen length; it is not limited to ten seconds. The silent thinking countdown remains exactly ten
+            seconds for visual puzzles. Do not rubber-stamp.
             Specification: """ + json.writeValueAsString(spec) + "\nNarration: " + json.writeValueAsString(narration) + operatorSuffix(operatorDirection);
         var response = client.responses().create(ResponseCreateParams.builder().model(activeModel).input(prompt)
             .store(false).reasoning(Reasoning.builder().effort(ReasoningEffort.MEDIUM).build())
@@ -194,8 +197,15 @@ class NarrationAi {
             unambiguous in the frame. Check that the narration names only the supplied OPTION letter (A through E), never
             a character name or choice label. If the frame supports the puzzle, polish the narration only as needed
             to speak exactly what a family viewer ages 6–18 can fairly infer from the displayed frame. Preserve the
-            voice-timed question lead-in and reveal, followed by the fixed eight-second countdown. Never invent details to repair art.
+            voice-timed question lead-in and reveal, followed by the fixed ten-second countdown. Preserve the existing
+            word-count slots exactly: questionLeadIn 24–32 words, timerCue 5–7 words, and revealExplanation 15–25
+            words. Count each line before returning it; do not shorten or expand a line outside its range. Never invent details to repair art.
+            Also check the puzzle's causal claim: the depicted trace must plausibly result from the event asked about,
+            in the shown location and by the shown contact. Matching appearance alone is not proof. If the source
+            puzzle's reasoning is physically unsupported, fail visualClueConfirmed instead of narrating around it.
 
+            The story lead-in is voice-timed: its actual clip length sets the story-screen length. It does not consume
+            or replace the separate, fixed ten-second silent thinking countdown. A 24–32-word lead-in is expected.
             If any image does not prove its clue, set that finding’s visualClueConfirmed and narrationMatchesFrame
             false, explain the mismatch, and keep the narration conservative. Each notes field must be one or two short sentences, under 300 characters. Return the complete structured
             NarrationGrounding object with one finding per image in order. Before returning, silently verify that
@@ -215,6 +225,7 @@ class NarrationAi {
         NarrationGrounding grounded = NarrationGrounding.normalize(response.output().stream().flatMap(item -> item.message().stream())
             .flatMap(item -> item.content().stream()).flatMap(item -> item.outputText().stream()).findFirst()
             .orElseThrow(() -> new IllegalStateException("No complete structured narration grounding returned")), spec.puzzles().size());
+        grounded = grounded.preserveValidSpeechSlots(narration, spec);
         grounded.validate(spec);
         return new GroundedDraft(grounded, activeModel, response.id());
     }
@@ -224,7 +235,7 @@ class NarrationAi {
             var puzzle = spec.puzzles().get(index);
             return new EpisodeNarration.PuzzleNarration(index + 1,
                 "A bright little scene is unfolding, with three lively choices and one clever surprise waiting in the picture. Which option solves this friendly puzzle today?",
-                "Take eight seconds to choose your answer.",
+                "Take ten seconds to choose your answer.",
                 "The answer is OPTION " + puzzle.answerId() + ". Follow the clear clue in the scene; it explains why this choice fits the puzzle and the other choices do not.");
         }).toList();
         return new EpisodeNarration("Welcome to Puzzle Pop, where every small clue can spark a brilliant idea.",

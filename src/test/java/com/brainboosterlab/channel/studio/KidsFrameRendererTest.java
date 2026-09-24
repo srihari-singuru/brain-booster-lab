@@ -18,6 +18,19 @@ class KidsFrameRendererTest {
         assertThat(StudioRenderer.layoutVersion(spec)).isEqualTo("kids-thumbnail-10");
         assertThat(StudioRenderer.layoutVersion(PilotFixtures.sample())).isEqualTo("reasoning-2");
     }
+    @Test void sideBrandPacksChannelNameAndYoutubeMarkWithoutOverlap() {
+        var g = new BufferedImage(1920,1080,BufferedImage.TYPE_INT_RGB).createGraphics();
+        try {
+            var shortName = KidsFrameRenderer.sideBrandLayout(g, "Puzzle Pop", 540);
+            assertThat(shortName.iconTop()).isGreaterThanOrEqualTo(shortName.textCenterY() + shortName.textWidth() / 2 + 28);
+
+            String longName = "FAMILY PUZZLE CHANNEL ".repeat(3).substring(0, 48);
+            var longLayout = KidsFrameRenderer.sideBrandLayout(g, longName, 540);
+            assertThat(longLayout.textWidth()).isLessThanOrEqualTo(500);
+            assertThat(longLayout.iconTop()).isGreaterThanOrEqualTo(longLayout.textCenterY() + longLayout.textWidth() / 2 + 28);
+            assertThat(longLayout.iconTop() + 52).isLessThan(900);
+        } finally { g.dispose(); }
+    }
     @Test void fullBleedArtworkKeepsSideEdgesAndFloorEvidenceVisible() {
         var source=new BufferedImage(1536,864,BufferedImage.TYPE_INT_RGB);
         var g=source.createGraphics();g.setColor(Color.MAGENTA);g.fillRect(0,0,1536,864);g.dispose();

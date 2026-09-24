@@ -1,14 +1,13 @@
 package com.brainboosterlab.channel.studio;
 
 import com.openai.client.OpenAIClient;
-import com.openai.client.okhttp.OpenAIOkHttpClient;
 import com.openai.core.http.HttpResponse;
 import com.openai.models.audio.speech.SpeechCreateParams;
+import com.brainboosterlab.channel.OpenAiClientFactory;
 import java.io.BufferedInputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -55,7 +54,7 @@ class SpeechAi {
         this.mode = speechMode == null || speechMode.isBlank() ? generationMode : speechMode;
         this.model = speechModel == null || speechModel.isBlank() ? "gpt-4o-mini-tts" : speechModel.trim();
         this.voice = speechVoice == null || speechVoice.isBlank() ? "cedar" : speechVoice.trim().toLowerCase(Locale.ROOT);
-        this.client = "live".equals(mode) ? OpenAIOkHttpClient.builder().fromEnv().timeout(Duration.ofSeconds(90)).maxRetries(0).build() : null;
+        this.client = "live".equals(mode) ? OpenAiClientFactory.create(java.time.Duration.ofSeconds(90)) : null;
         this.ffmpeg = ffmpeg == null || ffmpeg.isBlank() ? "ffmpeg" : ffmpeg;
     }
 
@@ -85,6 +84,28 @@ class SpeechAi {
         speech.validate(spec);
         return new Draft(speech);
     }
+
+    /** Generates one reusable, non-episode CTA clip; called only by the explicit asset-generation test. */
+    void synthesizeReusableAsset(String input, Path target, Profile profile) throws Exception {
+        synthesizeReusableAsset(input, target, profile, ctaDirection());
+    }
+
+    void synthesizeReusableAsset(String input, Path target, Profile profile, String instructions) throws Exception {
+        EpisodeSpec.require("live".equals(mode), "Reusable CTA voice assets require SPEECH_MODE=live and OPENAI_API_KEY.");
+        profile.validate();
+        Files.createDirectories(target.toAbsolutePath().getParent());
+        synthesize(input, target, instructions, profile, "cta");
+    }
+
+    static String ctaDirection() {
+        return "The same bright, energetic adult male family-challenge host used for the Puzzle Pop puzzle narration. Keep the exact same natural high-leaning pitch, clear volume, and steady medium pace. Sound warm, playful, and genuinely excited, with crisp diction and a smile; do not shout, rush, add words, or make a long pause. Deliver this short line as a natural invitation to children and parents.";
+    }
+
+    static String introDirection() {
+        return "The same bright, energetic adult male family-challenge host used for Puzzle Pop. Keep the same natural high-leaning pitch, clear volume, and steady medium pace. Give a warm, exciting welcome with crisp, friendly diction and a smile. Pause briefly after the channel name, then invite children and parents to solve the puzzles together. Do not shout, rush, or add words.";
+    }
+
+    static double wavDuration(Path wav) throws Exception { return duration(wav); }
 
     Draft normalizeExisting(EpisodeSpec spec, EpisodeNarration narration, Path directory) throws Exception {
         return normalizeExisting(spec, narration, directory, new Profile(model, voice, STANDARD_SPEECH_SPEED));

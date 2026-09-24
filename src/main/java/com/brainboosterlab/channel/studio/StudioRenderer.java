@@ -13,21 +13,22 @@ import org.springframework.stereotype.Component;
 @Component
 class StudioRenderer {
     /** Bump when a saved video no longer represents the current production contract. */
-    static final String RENDER_VERSION = "voice-timed-puzzle-segments-2";
+    static final String RENDER_VERSION = "voice-timed-segments-branded-intro-8";
     static final String LAYOUT_VERSION = "reasoning-2";
     static String layoutVersion(EpisodeSpec spec) {
         return spec.puzzles().stream().anyMatch(p -> "visual".equals(p.kind())) ? "kids-thumbnail-10" : LAYOUT_VERSION;
     }
     static final int WIDTH = 1920, HEIGHT = 1080;
-    /** The countdown is fixed; question, cue, and reveal visuals take their measured local voice duration. */
+    /** Fallback only when no speech track exists; generated question narration uses its measured duration. */
     static final int VISUAL_SETUP_SECONDS = 10;
     static final double VISUAL_TIMER_CUE_SECONDS = 3.5;
-    static final int VISUAL_QUESTION_SECONDS = 8;
+    static final int VISUAL_QUESTION_SECONDS = 10;
     static final int VISUAL_REVEAL_SECONDS = 8;
+    static final double SPEECH_GAP_SECONDS = PuzzleMotion.SPEECH_GAP_TICKS / (double) PuzzleMotion.FPS;
     /**
      * All clips are normalized before concat.  OpenAI speech WAVs can be 96 kHz,
      * whereas local cue/tick WAVs are generated here; mixing their timestamps in
-     * the concat demuxer caused the eight tick sounds to be compressed on some
+     * the concat demuxer caused countdown tick sounds to be compressed on some
      * players.
      */
     static final int AUDIO_SAMPLE_RATE = 48_000;
@@ -62,7 +63,7 @@ class StudioRenderer {
             script.append("PUZZLE ").append(i + 1).append(" — ").append(puzzle.title()).append("\n")
                 .append("QUESTION LEAD-IN — VOICE-TIMED\n")
                 .append(beat.questionLeadIn()).append("\n")
-                .append("TIMER CUE — VOICE-TIMED; THE TIMER HOLDS AT EIGHT, THEN THE FIXED ").append(VISUAL_QUESTION_SECONDS).append("-SECOND COUNTDOWN STARTS\n")
+                .append("TIMER CUE — VOICE-TIMED; THE TIMER HOLDS AT TEN, THEN THE FIXED ").append(VISUAL_QUESTION_SECONDS).append("-SECOND COUNTDOWN STARTS\n")
                 .append(beat.timerCue()).append("\n")
                 .append("SILENT THINKING — EXACTLY ").append(VISUAL_QUESTION_SECONDS).append(" SECONDS\n")
                 .append("REVEAL EXPLANATION — VOICE-TIMED\n")
@@ -77,7 +78,7 @@ class StudioRenderer {
             var p = spec.puzzles().get(i);
             return new EpisodeNarration.PuzzleNarration(i + 1,
                 "A cheerful mini mystery is unfolding with three lively choices and one clever surprise in the picture. Which option solves this friendly puzzle today?",
-                "Take eight seconds to choose your answer.",
+                "Take ten seconds to choose your answer.",
                 "The answer is OPTION " + p.answerId() + ". Follow the clearest clue in the scene; it shows why this choice fits the puzzle and the others do not.");
         }).toList();
         return new EpisodeNarration("Welcome to Puzzle Pop, where every small clue can spark a brilliant idea.", beats,
@@ -100,12 +101,18 @@ class StudioRenderer {
 
         Path manifest = dir.resolve(prefix + "-segments.txt");
         StringBuilder files = new StringBuilder();
+        appendAudio(files, renderIntro(dir, prefix, speech != null).getFileName().toString());
         for (int i = 0; i < segments.size(); i++) {
             appendAudio(files, segments.get(i).video().getFileName().toString());
             if (i < segments.size() - 1) {
-                Path transition = renderTransition(dir, prefix, i, segments.get(i).last(), segments.get(i + 1).first(), speech != null);
+                PuzzleMotion.Cta cta = speech == null ? null : PuzzleMotion.ctaAfter(segments.size(), i);
+                Path transition = renderTransition(dir, prefix, i, segments.get(i).last(), segments.get(i + 1).first(), speech != null, cta);
                 appendAudio(files, transition.getFileName().toString());
             }
+        }
+        if (speech != null) {
+            Path outro = renderOutro(dir, prefix);
+            appendAudio(files, outro.getFileName().toString());
         }
         Files.writeString(manifest, files);
         Path result = dir.resolve(prefix + ".mp4"), pending = dir.resolve(prefix + ".pending.mp4");
@@ -123,13 +130,17 @@ class StudioRenderer {
         var puzzle = spec.puzzles().get(index); var art = readArt(dir, index); var overlay = SceneOverlay.read(dir, index, puzzle);
         boolean visual = "visual".equals(puzzle.kind());
         EpisodeSpeech.PuzzleSpeech track = speech == null ? null : speech.puzzles().get(index);
-        double setup = track == null ? (visual ? VISUAL_SETUP_SECONDS : 8) : track.questionSeconds();
-        double cue = track == null ? (visual ? VISUAL_TIMER_CUE_SECONDS : 0) : track.timerCueSeconds();
+        double gap = track == null ? 0 : SPEECH_GAP_SECONDS;
+        double setup = track == null ? (visual ? VISUAL_SETUP_SECONDS : 8) : track.questionSeconds() + gap;
+        double cue = track == null ? (visual ? VISUAL_TIMER_CUE_SECONDS : 0) : track.timerCueSeconds() + gap;
         double thinking = visual ? VISUAL_QUESTION_SECONDS : puzzle.thinkSeconds();
-        double reveal = track == null ? (visual ? VISUAL_REVEAL_SECONDS : 12) : track.revealSeconds();
+        double reveal = track == null ? (visual ? VISUAL_REVEAL_SECONDS : 12) : track.revealSeconds() + gap;
         Path frames = dir.resolve(prefix + "-puzzle-" + (index + 1) + "-frames"); Files.createDirectories(frames);
         var sequence = new FrameSequence(frames); BufferedImage first = null, last = null;
-        for (var phase : List.of(new TimedPhase("setup", setup), new TimedPhase("cue", cue), new TimedPhase("question", thinking), new TimedPhase("reveal", reveal))) {
+        var phases = new ArrayList<>(List.of(new TimedPhase("setup", setup), new TimedPhase("cue", cue), new TimedPhase("question", thinking)));
+        if (gap > 0) phases.add(new TimedPhase("breath", gap));
+        phases.add(new TimedPhase("reveal", reveal));
+        for (var phase : phases) {
             if (phase.seconds() <= 0) continue;
             int totalTicks = ticks(phase.seconds());
             if (visual && phase.name().equals("reveal")) {
@@ -161,15 +172,55 @@ class StudioRenderer {
         return new RenderedSegment(result, first, last);
     }
 
-    private Path renderTransition(Path dir, String prefix, int index, BufferedImage before, BufferedImage after, boolean withAudio) throws Exception {
+    private Path renderTransition(Path dir, String prefix, int index, BufferedImage before, BufferedImage after,
+                                  boolean withAudio, PuzzleMotion.Cta cta) throws Exception {
         Path frames = dir.resolve(prefix + "-transition-" + (index + 1) + "-frames"); Files.createDirectories(frames);
         var sequence = new FrameSequence(frames);
-        for (int tick = 1; tick <= PuzzleMotion.TRANSITION_TICKS; tick++) sequence.add(PuzzleMotion.transition(before, after, (double) tick / PuzzleMotion.TRANSITION_TICKS), 1);
+        int totalTicks = withAudio && cta != null ? ctaTicks(dir, cta) : PuzzleMotion.TRANSITION_TICKS;
+        for (int tick = 1; tick <= totalTicks; tick++) sequence.add(PuzzleMotion.transition(before, after, (double) tick / totalTicks, cta), 1);
         sequence.finish();
         Path result = dir.resolve(prefix + "-transition-" + (index + 1) + ".mp4"), pending = dir.resolve(prefix + "-transition-" + (index + 1) + ".pending.mp4");
         encodeFrames(frames, withAudio ? dir.resolve("speech-transition-" + index + ".wav") : null, sequence.ticks / (double) PuzzleMotion.FPS, pending, dir.resolve(prefix + "-transition-" + (index + 1) + "-ffmpeg.log"));
         Files.move(pending, result, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
         return result;
+    }
+
+    private Path renderOutro(Path dir, String prefix) throws Exception {
+        Path frames = dir.resolve(prefix + "-outro-frames"); Files.createDirectories(frames);
+        var sequence = new FrameSequence(frames);
+        int totalTicks = ctaTicks(dir, PuzzleMotion.Cta.OUTRO);
+        for (int tick = 1; tick <= totalTicks; tick++) sequence.add(PuzzleMotion.outro((double) tick / totalTicks), 1);
+        sequence.finish();
+        Path result = dir.resolve(prefix + "-outro.mp4"), pending = dir.resolve(prefix + "-outro.pending.mp4");
+        encodeFrames(frames, dir.resolve("speech-cta-outro.wav"), sequence.ticks / (double) PuzzleMotion.FPS, pending, dir.resolve(prefix + "-outro-ffmpeg.log"));
+        Files.move(pending, result, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        return result;
+    }
+
+    private Path renderIntro(Path dir, String prefix, boolean narrated) throws Exception {
+        Path audio = narrated ? dir.resolve("speech-intro.m4a") : null;
+        Path durationSource = narrated ? dir.resolve("speech-intro.wav") : materializeIntroAudio(dir);
+        int totalTicks = ticks(SpeechAi.wavDuration(durationSource));
+        BufferedImage logo = readBrandingImage("/branding/puzzle-pop-logo.png");
+        BufferedImage banner = readBrandingImage("/branding/puzzle-pop-banner.png");
+        Path frames = dir.resolve(prefix + "-intro-frames"); Files.createDirectories(frames);
+        var sequence = new FrameSequence(frames);
+        for (int tick = 0; tick < totalTicks; tick++)
+            sequence.add(PuzzleMotion.intro((double) tick / totalTicks, logo, banner), 1);
+        sequence.finish();
+        Path result = dir.resolve(prefix + "-intro.mp4"), pending = dir.resolve(prefix + "-intro.pending.mp4");
+        encodeFrames(frames, audio, sequence.ticks / (double) PuzzleMotion.FPS, pending, dir.resolve(prefix + "-intro-ffmpeg.log"));
+        Files.move(pending, result, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        return result;
+    }
+
+    private static BufferedImage readBrandingImage(String resource) throws Exception {
+        try (var input = StudioRenderer.class.getResourceAsStream(resource)) {
+            if (input == null) throw new IllegalStateException("Missing Puzzle Pop intro artwork " + resource);
+            BufferedImage image = ImageIO.read(input);
+            if (image == null) throw new IllegalStateException("Unreadable Puzzle Pop intro artwork " + resource);
+            return image;
+        }
     }
 
     private void encodeFrames(Path frames, Path audio, double durationSeconds, Path pending, Path log) throws Exception {
@@ -188,18 +239,39 @@ class StudioRenderer {
     void writeSpeechTrack(EpisodeSpec spec, EpisodeSpeech speech, Path dir) throws Exception {
         speech.validate(spec);
         Files.createDirectories(dir);
+        for (PuzzleMotion.Cta cta : PuzzleMotion.Cta.values()) materializeCtaAudio(dir, cta);
+        Path gap = dir.resolve("speech-gap.wav");
+        writeSilence(gap, SPEECH_GAP_SECONDS, dir);
         StringBuilder episodeManifest = new StringBuilder();
+        Path intro = normalizeForAssembly(materializeIntroAudio(dir), dir);
+        Path introLead = dir.resolve("speech-intro-lead.wav"), introTail = dir.resolve("speech-intro-tail.wav");
+        writeSilence(introLead, SPEECH_GAP_SECONDS, dir); writeSilence(introTail, SPEECH_GAP_SECONDS, dir);
+        StringBuilder introManifest = new StringBuilder();
+        appendAudio(introManifest, introLead.getFileName().toString());
+        appendAudio(introManifest, intro.getFileName().toString());
+        appendAudio(introManifest, introTail.getFileName().toString());
+        Path introList = dir.resolve("speech-intro-list.txt"); Files.writeString(introList, introManifest);
+        Path introWav = dir.resolve("speech-intro.wav"), introPending = dir.resolve("speech-intro.pending.wav");
+        runFfmpeg(List.of(ffmpeg, "-y", "-v", "warning", "-f", "concat", "-safe", "0", "-i", introList.toString(),
+            "-c:a", "pcm_s16le", introPending.toString()), dir);
+        Files.move(introPending, introWav, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        Path introAac = encodeAac(introWav, dir.resolve("speech-intro.m4a"), dir);
+        appendAudio(episodeManifest, introAac.getFileName().toString());
         for (int i = 0; i < spec.puzzles().size(); i++) {
             Path question = normalizeForAssembly(requireAudio(dir, "speech-question-" + i + ".wav"), dir);
             Path timer = normalizeForAssembly(requireAudio(dir, "speech-timer-" + i + ".wav"), dir);
             Path reveal = normalizeForAssembly(requireAudio(dir, "speech-reveal-" + i + ".wav"), dir);
             StringBuilder puzzleManifest = new StringBuilder();
             appendAudio(puzzleManifest, question.getFileName().toString());
+            appendAudio(puzzleManifest, gap.getFileName().toString());
             appendAudio(puzzleManifest, timer.getFileName().toString());
+            appendAudio(puzzleManifest, gap.getFileName().toString());
             String ticks = "speech-ticks-" + i + ".wav";
             writeTicking(dir.resolve(ticks), dir);
             appendAudio(puzzleManifest, ticks);
+            appendAudio(puzzleManifest, gap.getFileName().toString());
             appendAudio(puzzleManifest, reveal.getFileName().toString());
+            appendAudio(puzzleManifest, gap.getFileName().toString());
             Path puzzleList = dir.resolve("puzzle-audio-" + i + ".txt"), puzzlePending = dir.resolve("puzzle-audio-" + i + ".pending.m4a"), puzzle = dir.resolve("puzzle-audio-" + i + ".m4a");
             Files.writeString(puzzleList, puzzleManifest);
             runFfmpeg(List.of(ffmpeg, "-y", "-v", "warning", "-f", "concat", "-safe", "0", "-i", puzzleList.toString(), "-c:a", "aac", "-b:a", "192k", "-ar", Integer.toString(AUDIO_SAMPLE_RATE), "-ac", "1", "-movflags", "+faststart", puzzlePending.toString()), dir);
@@ -207,11 +279,18 @@ class StudioRenderer {
             appendAudio(episodeManifest, puzzle.getFileName().toString());
             if (i < spec.puzzles().size() - 1) {
                 String transition = "speech-transition-" + i + ".wav";
-                writeSilence(dir.resolve(transition), PuzzleMotion.TRANSITION_TICKS / (double) PuzzleMotion.FPS, dir);
+                PuzzleMotion.Cta cta = PuzzleMotion.ctaAfter(spec.puzzles().size(), i);
+                double duration = (cta == null ? PuzzleMotion.TRANSITION_TICKS : ctaTicks(dir, cta)) / (double) PuzzleMotion.FPS;
+                if (cta == null) writeSilence(dir.resolve(transition), duration, dir);
+                else padCtaAudio(dir.resolve("cta-" + cta.name().toLowerCase(java.util.Locale.ROOT) + ".wav"), dir.resolve(transition), duration, dir);
                 Path transitionAac = encodeAac(dir.resolve(transition), dir.resolve("speech-transition-" + i + ".m4a"), dir);
                 appendAudio(episodeManifest, transitionAac.getFileName().toString());
             }
         }
+        double outroDuration = ctaTicks(dir, PuzzleMotion.Cta.OUTRO) / (double) PuzzleMotion.FPS;
+        padCtaAudio(dir.resolve("cta-outro.wav"), dir.resolve("speech-cta-outro.wav"), outroDuration, dir);
+        Path outroAac = encodeAac(dir.resolve("speech-cta-outro.wav"), dir.resolve("speech-cta-outro.m4a"), dir);
+        appendAudio(episodeManifest, outroAac.getFileName().toString());
         Files.writeString(dir.resolve("speech-audio.txt"), episodeManifest);
         Path pending = dir.resolve("speech.pending.m4a");
         runFfmpeg(List.of(ffmpeg, "-y", "-v", "warning", "-f", "concat", "-safe", "0", "-i",
@@ -219,6 +298,41 @@ class StudioRenderer {
         Files.move(pending, dir.resolve("speech.m4a"), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
         Files.writeString(dir.resolve("ai-voice-disclosure.txt"),
             "This episode uses an AI-generated OpenAI text-to-speech voice. Include this disclosure in the YouTube description before publishing.\n");
+    }
+
+    private int ctaTicks(Path dir, PuzzleMotion.Cta cta) throws Exception {
+        Path audio = materializeCtaAudio(dir, cta);
+        return Math.max(1, (int) Math.ceil(SpeechAi.wavDuration(audio) * PuzzleMotion.FPS)) + PuzzleMotion.SPEECH_GAP_TICKS;
+    }
+
+    private Path materializeIntroAudio(Path dir) throws Exception {
+        Path audio = dir.resolve("cta-intro.wav");
+        if (Files.isRegularFile(audio)) return audio;
+        String resource = "/cta-audio/intro.wav";
+        try (var input = StudioRenderer.class.getResourceAsStream(resource)) {
+            if (input == null) throw new IllegalStateException("Missing reusable intro voice asset " + resource + "; generate the one-time voice pack and rebuild the app.");
+            Files.copy(input, audio, StandardCopyOption.REPLACE_EXISTING);
+        }
+        return audio;
+    }
+
+    private Path materializeCtaAudio(Path dir, PuzzleMotion.Cta cta) throws Exception {
+        String name = cta.name().toLowerCase(java.util.Locale.ROOT);
+        Path audio = dir.resolve("cta-" + name + ".wav");
+        if (Files.isRegularFile(audio)) return audio;
+        String resource = "/cta-audio/" + name + ".wav";
+        try (var input = StudioRenderer.class.getResourceAsStream(resource)) {
+            if (input == null) throw new IllegalStateException("Missing reusable CTA voice asset " + resource + "; generate the one-time CTA pack and rebuild the app.");
+            Files.copy(input, audio, StandardCopyOption.REPLACE_EXISTING);
+        }
+        return audio;
+    }
+
+    private void padCtaAudio(Path source, Path target, double seconds, Path dir) throws Exception {
+        Path pending = target.resolveSibling(target.getFileName() + ".pending.wav");
+        runFfmpeg(List.of(ffmpeg, "-y", "-v", "warning", "-i", source.toString(), "-af", "apad", "-t",
+            String.format(java.util.Locale.ROOT, "%.6f", seconds), "-ar", Integer.toString(AUDIO_SAMPLE_RATE), "-ac", "1", "-c:a", "pcm_s16le", pending.toString()), dir);
+        Files.move(pending, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
     }
 
     private static void appendAudio(StringBuilder manifest, String filename) {
