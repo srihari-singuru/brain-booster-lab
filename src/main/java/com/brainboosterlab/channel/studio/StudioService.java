@@ -458,9 +458,9 @@ class StudioService {
                     .mapToObj(i -> "PUZZLE " + (i + 1) + " CONCEPT TO AVOID: " + puzzleHistoryLine(original.puzzles().get(i)))
                     .collect(java.util.stream.Collectors.joining("\n"));
                 String direction = stageInstructions(source).forAction("generate") + "\n\nREMEDIATION: Replace only puzzle " + (failure.index() + 1)
-                    + ". It failed an independent review. Keep the brisk, story-led visual mini-mystery format: a fresh, family-safe situation, "
-                    + "a direct question, plausible candidates, and one or two linked, clearly pictured clues that make the answer feel earned. "
-                    + "Keep the deduction medium and fair for a ten-second solve; do not add arbitrary rules or complexity. "
+                    + ". It failed an independent review. Keep the family detective-case format: a fresh, family-safe case with a hook, "
+                    + "a direct detective question, 3–4 believable suspects with a red herring on every innocent one, and one fair clue "
+                    + "that links a scene detail to one suspect. Keep it medium-hard but fair for a ten-second solve; do not add arbitrary rules. "
                     + "Make the new situation, setting, clue object, and question distinct from the rejected puzzle and concepts already in this episode. "
                     + "Rejected puzzle: " + rejectedPuzzle + "\nOther concepts already in this episode that MUST NOT be repeated:\n" + alreadyInEpisode
                     + "\nReviewer note: " + trimForPrompt(failure.notes(), 1000);
@@ -635,14 +635,14 @@ class StudioService {
             String history = recentPuzzleTitles(e.id);
             if (partial != null) for (EpisodeSpec.Puzzle puzzle : partial.puzzles())
                 history += "- CURRENT EPISODE (already saved; do not repeat): " + puzzleHistoryLine(puzzle) + '\n';
-            String title = partial == null ? "Fresh Family Puzzle Collection" : partial.title();
+            String title = partial == null ? "Family Detective Case Files" : partial.title();
             for (int number = completed + 1; number <= production.puzzleCount(); number++) {
-                String slotDirection = "\n\nEPISODE POSITION " + number + " OF " + production.puzzleCount()
-                    + ". Write this as a brisk, story-led visual challenge, not an abstract worksheet. Before drafting, compare "
-                    + "the story, clue and reveal against the supplied history. Choose a genuinely fresh situation and avoid "
-                    + "repeating the immediately previous question shape or clue mechanism. Vary the kind of story across this "
-                    + "episode, but do not force a strange rule or complicated deduction just to appear novel. Keep the clue "
-                    + "clear, fair, visible and satisfying in a ten-second solve.";
+                String slotDirection = "\n\nCASE " + number + " OF " + production.puzzleCount()
+                    + ". Write this as a brisk, medium-hard family detective case with a one-sentence hook, 3–4 believable "
+                    + "suspects, a red herring on every innocent suspect, and one fair clue that needs two linked observations. Before drafting, compare the case, clue and reveal against "
+                    + "the supplied history. Choose a genuinely fresh setting and crime, and use a different CASE TYPE and "
+                    + "question shape than the immediately previous case. Do not force a strange rule or complicated "
+                    + "deduction just to appear novel. Keep the clue fair, visible once found, and satisfying in a ten-second solve.";
                 var draft = recovery && number == completed + 1
                     ? ai.generateRecovery(e.brief, 1, production.textModel(), direction + slotDirection, history)
                     : ai.generate(e.brief, 1, production.textModel(), direction + slotDirection, history);

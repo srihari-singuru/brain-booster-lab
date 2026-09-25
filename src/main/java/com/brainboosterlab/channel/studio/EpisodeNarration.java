@@ -42,6 +42,6 @@ public record EpisodeNarration(String episodeOpening, List<PuzzleNarration> puzz
             label + " must be a single spoken line");
         int words = text.trim().split("\\s+").length;
         EpisodeSpec.require(words >= minimumWords && words <= maximumWords,
-            label + " must be " + minimumWords + "–" + maximumWords + " words for its speech slot");
+            label + " must be " + minimumWords + "–" + maximumWords + " words for its speech slot (it has " + words + ")");
     }
 }

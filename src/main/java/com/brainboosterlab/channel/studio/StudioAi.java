@@ -127,24 +127,72 @@ class StudioAi {
                     + "\nCURRENT EPISODE ANSWER DISTRIBUTION: already used " + String.join(", ", usedAnswers)
                     + ". Choose a different correct OPTION letter when 3+ choices make that possible.";
             }
-            return new Draft(new EpisodeSpec("Fresh Family Puzzle Collection", List.copyOf(puzzles)), activeModel, lastResponseId);
+            return new Draft(new EpisodeSpec("Family Detective Case Files", List.copyOf(puzzles)), activeModel, lastResponseId);
         }
         String prompt = """
-            Write %d fresh, story-led visual puzzle challenges for a family YouTube channel watched by children
-            ages 6–18 and their parents. Set kind="visual" for every puzzle. Aim for the lively mini-story format
-            of a short visual mystery: introduce a specific, easy-to-picture situation; ask one direct question
-            about what happened, who is ready, which plan worked, or which clue explains the scene; let viewers
-            inspect a clear illustration; then give a satisfying reveal. The scene should make people curious
-            enough to pause and solve—not feel like a worksheet, generic IQ test, or random spot-the-difference.
+            Write %d original DETECTIVE CASES for Puzzle Pop, a family YouTube mystery channel watched by children
+            ages 6–18 and their parents. Set kind="visual" for every case. Each case is a tiny, bingeable whodunit:
+            something surprising has just happened, three or four suspects appear together in one illustrated scene,
+            viewers get exactly ten seconds to study the picture and pick the culprit, and the reveal delivers a
+            satisfying "how did I miss that?" moment. Model the energy of the best viral picture-riddle and detective
+            channels: an instant hook, clear playful stakes, a line-up of believable suspects, one fair visual clue,
+            and a reveal that makes families argue happily about who they picked. Never a worksheet or IQ test.
 
-            DIFFICULTY AND FAIRNESS: medium, enjoyable family difficulty. Each puzzle should take one small
-            inference, often by connecting two nearby pieces of evidence, and be solvable in about ten seconds.
-            Do not make the first puzzle a giveaway. Do not make any puzzle difficult because of tricky English,
-            specialist knowledge, obscure facts, arithmetic, or a tiny hidden object. Evidence must be visibly
-            drawn in the scene, large enough for a phone screen, and sufficient for exactly one answer. Build a
-            plausible story hook and plausible alternatives; avoid a glaringly suspicious face or a single
-            unrelated color/size difference as the whole solution. A clear clue can be simple; the story around
-            it should make the answer feel clever and rewarding, not arbitrary.
+            WHAT MAKES A CASE GO VIRAL — apply every point:
+            1. INSTANT HOOK: the premise lands in one sentence and creates urgency or delight, e.g. the championship
+               trophy vanished an hour before the final, or someone ate the birthday cake before the party. Be
+               specific: name the object, the place, and the moment. Generic premises are boring.
+            2. PLAYFUL STAKES: it matters to someone (a party, a contest, a show, a pet, a prize), yet stays light.
+            3. BELIEVABLE SUSPECTS: three or four distinct suspects, each with a clear visual role and a reason they
+               could have done it (everyone was near the scene). Suspects may be children, adults, animals, robots,
+               or friendly fantasy creatures. All must look equally plausible at first glance.
+            4. RED HERRINGS ON EVERY INNOCENT SUSPECT: each innocent suspect carries a tempting, innocent detail
+               that points toward the crime at first glance (also has flour on their hands but no frosting; also
+               wears boots, but they are dry; also holds a paintbrush, but in the wrong color). At first glance
+               every suspect should look guilty. The decisive clue must cleanly rule out every decoy so exactly one
+               answer remains.
+            5. ONE FAIR, DECISIVE CLUE THAT NEEDS TWO LINKED OBSERVATIONS: the viewer must connect a detail at the
+               scene of the crime with a matching detail on exactly one suspect. Neither detail alone solves it.
+               Example: all three suspects have frosting on their hands, but the cake's missing slice has a pink
+               layer, and only one suspect's frosting is pink. Or: several paw prints cross the floor, but only one
+               trail has a three-toed print, and only one pet has a bandaged paw that makes that shape. Or: everyone
+               says they stayed indoors, several carry umbrellas, but only one umbrella is dripping onto the rug.
+            6. THE AHA REVEAL: once pointed out, the clue feels obvious and clever, never arbitrary or unfair.
+               Viewers should want to rewatch and comment which suspect they picked.
+
+            CASE TYPES — rotate across the episode and never use the same type twice in a row:
+            - Culprit trace: the culprit carries evidence from the scene (crumbs, paint, glitter, sand, pollen, ink).
+            - Broken alibi: facts states one shared claim (e.g. "Everyone says they never left the library.") and the
+              picture proves that exactly one suspect's claim is false.
+            - The impostor: one suspect is not who they claim to be (a "pilot" whose wings badge is a sticker, a
+              "knight" whose armor is painted cardboard); prove it with one visible detail.
+            - Trail and tracks: footprints, paw prints, toy-cart wheel tracks, drips, or a crumb trail that match
+              one suspect's shoes, paws, or item.
+            - Timeline clue: visible states show who was there most recently (melting ice cream, steaming cocoa,
+              still-wet shiny footprints). No clock reading or time calculation.
+            - Hidden in plain sight: a reflection, shadow, window, or open bag reveals what one suspect is hiding.
+            - Simple rule case: facts states one clear fictional rule ("Only the real wizard's wand glows near the
+              dragon egg.") and the picture shows who fits or breaks it.
+
+            SAFETY AND TONE: cozy, funny mysteries, never scary. Allowed "crimes": a missing snack or cake, a swapped or
+            vanished trophy, an item borrowed without asking, a harmless prank, a broken vase, an escaped pet, a spoiled
+            surprise, a small fib. Never use murder, death, weapons, injury, kidnapping, real danger, bullying, police
+            violence, or humiliating body or medical clues. Guilt must come only from visible physical evidence or a
+            broken claim — never from facial expression, skin tone, disability, body shape, age, gender, culture,
+            clothing style, or appearance. Keep every suspect's expression equally calm or equally surprised.
+
+            DIFFICULTY: MEDIUM-HARD — noticeably harder than a simple spot-the-odd-one-out, yet always fair. Harden
+            the case with these techniques:
+            - Decoys: every innocent suspect has a tempting detail, so no suspect is the only one with anything unusual.
+            - Two links: the answer comes from matching a scene detail to a suspect detail, never one lone oddity.
+            - Quiet clue: the decisive detail is not the brightest, largest, or most central thing in the picture,
+              and it is not spotlit. It sits naturally in the scene with the same visual weight as the decoys.
+            - Comparison: the difference between the real clue and the decoys is specific (a color, a shape, which
+              side, wet versus dry, full versus empty) rather than present versus absent.
+            It must still be fair: once found, every detail is large, sharp, and readable on a phone, and a sharp
+            viewer can solve it within ten seconds. A good target: most families need the full ten seconds, and
+            some get it wrong because a decoy fooled them. Never make it hard through tricky English, specialist
+            knowledge, arithmetic, clocks, tiny hidden objects, or multi-step logic grids.
             CAUSAL CLUE CHECK: the clue must prove the event asked about, not merely resemble or be associated
             with it. Check the physical chain from action to trace: the right surface must touch, mark, cast,
             carry, or change the right object in the right place and direction. Matching patterns alone do not
@@ -158,59 +206,59 @@ class StudioAi {
             a restaurant bill paid by phone; a stolen dress or fitting room; a sleeping library reader; a fake
             royal guard or wrong shield symbol; club entry wristbands; opening a jar with warm water; forged
             graduation papers; a death or scarf-as-weapon; a cracked branch endangering someone; a torn gift-wrap
-            clue; dentures; and fishing rods or biggest-fish clues. Do not use murder, assault, theft, dangerous
-            accidents, serious harm, or humiliating medical/body clues. Keep stakes playful, safe, and suitable
-            for a family challenge.
+            clue; dentures; and fishing rods or biggest-fish clues.
 
-            FRESHNESS: invent a new premise, place, cast, clue object, question wording, and reveal each time.
-            Check the supplied recent/current-episode history before drafting: never repeat or lightly rephrase a
-            listed puzzle, its distinctive scene, prop, clue, or solution. Within this episode, vary the story
-            worlds and challenge shapes; do not use the same setting or same reveal mechanism twice in a row.
-            Use an imaginative mix of everyday adventures, animals, travel, food, makers, games, nature, festivals,
-            playful mysteries, and gentle fantasy or friendly monsters. These are options, not a checklist. Let the
-            actual brief and history guide the idea. Novelty means a genuinely new scene and deduction—not a bizarre
-            rule invented only to seem different. Basic reasoning types may recur across long-term history, but
-            the actual story, clue, and answer path must be new.
+            FRESHNESS: invent a new premise, setting, suspect cast, clue object, question wording, and reveal each
+            time. Check the supplied recent/current-episode history before drafting: never repeat or lightly rephrase
+            a listed case, its distinctive scene, prop, clue, or solution. Vary the worlds across the episode:
+            bakeries, museums, school fairs, campsites, zoos, space stations, pirate ships, talent shows, sports days,
+            castles, science labs, farms, and friendly monster towns are options, not a checklist. Let the brief and
+            history guide the idea. Novelty means a genuinely new scene and deduction, not a bizarre rule.
 
-            CHALLENGE DESIGN: use exactly three or four candidates, with consecutive OPTION letters A/B/C or
-            A/B/C/D. Pick the count that fits the composition; never use five. Candidates should be equally
-            plausible and clearly separated in the art. Use varied direct question forms instead of repeating
-            "Which one is different?" Make the answer follow from one coherent story clue or two linked visual
-            clues. If the story includes a claim, the picture must actually prove or contradict it; do not label
-            someone a liar or culprit without evidence. Spread correct option letters across this episode using
-            the included answer history. Friendly fantasy is welcome with one clear fictional rule when needed.
-            Never infer character or morality from skin tone, disability, body shape, culture, or appearance.
+            CHALLENGE DESIGN: exactly three or four suspects with consecutive OPTION letters A/B/C or A/B/C/D; never
+            five. Suspects stand clearly separated left to right in OPTION order. Spread correct letters across the
+            episode using the included answer history. Never accuse without visible proof.
 
             WRITE THE FIELDS THIS WAY:
-            title: a short, specific story title, max 48 characters; episode title max 65.
-            setup: one lively spoken-style scene introduction, max 155 characters; it sets up the moment but does
-            not give away the clue or answer.
-            question: one natural, direct question, max 10 words and 60 characters. A child should understand it
-            on first hearing.
-            facts: zero or one short line, max 65 characters, only if a simple fictional rule is essential.
-            choices: 3–4 consecutive options A onward. Label max 24 characters; statement max 100 characters and
-            describe the candidate for production, not a spoken alibi or solution.
-            explanation: warm, satisfying reveal in one simple sentence; aim for 10–12 words, never exceed 18
-            words or 85 characters. Point to the exact visible clue and briefly say why it settles the question.
-            sceneDescription: max %s characters. Describe exactly the chosen 3–4 candidates in left-to-right
-            OPTION order, with the story context and all decisive evidence clearly visible. State precisely what
-            the image must show for the correct answer and what ordinary comparison details the other candidates
-            need. No extra option-like people. No text, letters, numbers, labels, badges, or answer marks; the
-            application adds option labels separately. Use a wide composition with the clue large and unobstructed.
-            thinkSeconds: use exactly 10 for every visual puzzle.
+            title: a punchy case title, max 48 characters, e.g. "The Case of the Vanishing Cupcakes"; episode title
+            max 65.
+            setup: one exciting hook in very simple English, max 155 characters, written as 2–4 short sentences:
+            what happened, where, why it matters, and how many suspects there are. Never reveal the clue.
+            question: one direct detective question, max 10 words and 60 characters, using only very common words,
+            e.g. "Who ate the birthday cake?", "Who is lying?", "Who is the fake chef?". A six-year-old or a beginner
+            English learner must understand it at once. Never use hard words such as culprit, impostor, or fibbing.
+            facts: zero or one line, max 65 characters, only for a broken-alibi claim or one essential fictional rule.
+            choices: 3–4 suspects with consecutive OPTION letters from A. label: a short, unique first name, max 24
+            characters, never a role word, because narration refers to suspects only by letter. statement: max 100
+            characters for the artist: the suspect's role, look, and any red-herring or decisive detail they carry.
+            explanation: the reveal in very simple English, ideally 10–14 words, never over 18 words or 85
+            characters. Name the right letter first, then point to the exact visible clue in plain words, e.g.
+            "Suspect B! B has blue frosting on her hands."
+            sceneDescription: max %s characters. Describe the scene of the case, including visible evidence of what
+            happened (the half-eaten cake, the empty trophy stand), then exactly the 3–4 suspects in left-to-right
+            OPTION order with role, pose, and specified details. State precisely where the decisive clue is and how
+            large it is, and the exact red-herring detail each innocent suspect carries and why it does NOT match.
+            Give the decisive detail and the decoys similar size and visual weight. No
+            extra suspect-like figures. No text, letters, numbers, labels, badges, or answer marks; the application
+            adds option letters separately. Wide composition; keep the clue large, unobstructed, and above the
+            bottom 16 percent of the frame.
+            thinkSeconds: use exactly 10 for every visual case.
 
-            Use simple, warm English in every field. Keep the narration setup lively but brief, like telling a
-            friend what is happening. Avoid filler, formal wording, complex clauses, and generic phrases such as
-            "Can you identify who is lying?" when a more specific story question works. Make the viewer want to
-            answer before the reveal.
+            Use VERY SIMPLE, beginner-friendly English in every viewer-facing field (title, setup, question, facts,
+            explanation): short sentences, only common everyday words, simple present or past tense, no idioms, no
+            hard words such as culprit, impostor, fibbing, vanished, evidence, or alibi. Keep it warm and exciting,
+            like a fun detective telling a young friend what just happened. Avoid filler, formal wording, and generic questions such as "Which one is different?" when a
+            specific detective question works.
 
-            BEFORE RETURNING: check that each story is understandable, interesting, safe, and distinct; exactly
-            one option is provably correct from the planned image; the clue is visible at phone size; and the
-            clue's physical cause and location genuinely follow from the event in the question; and the reveal
-            explains that proof without adding facts. Ask whether the same visual trace could come from an
-            ordinary unrelated action; if so, redesign the scene. Compare all premises and clues against the included
-            history and against the transcript exclusion list above. Redesign anything that is copied, confusing,
-            too easy, too obscure, or repetitive. Return only the structured data, no commentary.
+            BEFORE RETURNING: check that each case has a one-sentence hook and playful stakes; that every innocent
+            suspect has a tempting red herring and each one is cleanly ruled out; that the answer needs two linked
+            observations and could not be guessed from one odd-looking suspect; that exactly one suspect is provably guilty
+            from the planned image; that the clue is visible at phone size; that its physical cause and location
+            genuinely follow from the event in the question; and that the reveal explains that proof without adding
+            facts. Ask whether the same visual trace could come from an ordinary unrelated action; if so, redesign
+            it. Compare all premises and clues against the included history and the transcript exclusion list above.
+            Redesign anything copied, confusing, too easy, too obscure, repetitive, or boring. Return only the
+            structured data, no commentary.
             Original creative brief follows:
             """.formatted(puzzleCount, recovery ? "900" : (puzzleCount >= 4 ? "1100" : "1400")) + brief + recentTitleSuffix(recentPuzzleTitles)
             + (recovery ? "\nRECOVERY MODE: A prior response could not be decoded. Return the complete schema only. Keep every field concise, especially sceneDescription; do not omit any puzzle or use markdown.\n" : "")
@@ -282,25 +330,30 @@ class StudioAi {
             "setup", p.setup(), "question", p.question(), "facts", p.facts(), "choices", p.choices(),
             "scenePlan", "visual".equals(p.kind()) ? p.sceneDescription() : "Not applicable")).toList();
         String prompt = """
-            You are the independent story-puzzle editor and answer checker for a family visual challenge channel.
-            Review the supplied puzzles as a skeptical viewer would, then solve each one without seeing its proposed
+            You are the independent case editor and answer checker for a family detective-mystery YouTube channel.
+            Review the supplied cases as a skeptical viewer would, then solve each one without seeing its proposed
             answer or explanation. Return one finding per puzzle, in order, with puzzleNumber starting at 1,
             independentlySolvedAnswerId matching a supplied OPTION letter (or NONE if the scene plan is ambiguous),
             fair boolean, and concise notes (max 220 characters) naming the proof and why the closest alternative fails.
 
-            Match the intended format: a brief, lively mini-story; a direct question; three or four plausible
-            candidates; a clear, satisfying visual reveal. Judge for children ages 6–18 watching with parents.
-            Difficulty should be medium and fair in about ten seconds: not a giveaway, not a frustrating hunt.
-            Usually one small inference connects one clear clue or two linked clues to the story. The clue should
-            feel meaningful in context—not a random mismatch—and be easy to explain in simple spoken English.
-            Ask: would this setup make a viewer curious, can they understand the question at once, and will the
-            answer feel earned when the clue is revealed?
+            Match the intended format: a short whodunit with an instant hook and playful stakes; a direct detective
+            question; three or four believable suspects; a red herring on every innocent suspect that the decisive clue rules out;
+            and a clear, satisfying visual reveal. Judge for children ages 6–18 watching with parents.
+            Difficulty should be MEDIUM-HARD and fair in about ten seconds: a real challenge where decoys fool some
+            viewers, but never a frustrating hunt. The answer should need two linked observations.
+            Usually one small inference links the trace at the scene to the matching trace on one suspect, or a
+            broken claim to visible proof. The clue should feel meaningful in the case—not a random mismatch—and be
+            easy to explain in simple spoken English. Ask: would this hook make a viewer stop scrolling, can they
+            understand the question at once, and will the answer feel earned when the clue is revealed?
+            Mark fair=false for a giveaway where the culprit is the only suspect with anything unusual, where the
+            answer can be picked from one lone oddity without linking two details, or where a red herring is not
+            actually ruled out by visible evidence.
 
             Mark fair=false for multiple defensible answers, missing or unstated facts, implausible cause and
             effect, evidence that could not be shown clearly in one image, tiny hidden-object searches, or an
-            answer that depends on expression, stereotype, specialized knowledge, arithmetic, number patterns,
-            time calculations, truth tables, schoolwork, complex English, or an unsupported claim about a person's
-            guilt or motives. Require exactly three or four consecutive supplied OPTION letters (A/B/C or
+            answer that depends on expression, stereotype, appearance, specialized knowledge, arithmetic, number
+            patterns, time calculations, truth tables, schoolwork, complex English, or guilt that is not proven by
+            visible evidence or a broken stated claim. Require exactly three or four consecutive supplied OPTION letters (A/B/C or
             A/B/C/D), distinct plausible candidates, and a scene plan that explicitly depicts the evidence and
             ordinary comparison cases. Check the full physical chain: the action asked about must plausibly create
             the depicted trace on that exact surface, in that exact location and orientation. A matching mark,
@@ -312,17 +365,20 @@ class StudioAi {
             Keep the collection fresh and coherent: reject an exact or lightly rephrased premise, repeated scene,
             repeated clue prop, or repeated answer path within this episode. Different basic logic families may
             recur across a larger channel catalogue; do not reject a sound puzzle just because it uses a familiar
-            broad reasoning skill. Reject repetitive generic "Which one is different?" variants. Check that the
+            broad reasoning skill, but reject two consecutive cases with the same case type or clue mechanism.
+            Reject repetitive generic "Which one is different?" variants. Check that the
             concepts are not copied from the user's reference transcript: no ladder-fall attacker, twins/baby
             outfits, diver gear survival, phone-paid restaurant bill, stolen fitting-room dress, sleeping library
             reader, fake royal shield, club wristband, warm jar lid, forged diploma, death/scarf clue, cracked
-            branch danger, torn gift wrap, dentures, or fishing-rod/biggest-fish scene. Keep stories safe and
-            playful; no violence, serious danger, theft, murder, or humiliating body/medical clues.
+            branch danger, torn gift wrap, dentures, or fishing-rod/biggest-fish scene. Keep cases cozy and
+            playful: harmless mischief such as a missing snack, a vanished trophy, a prank, a broken vase, or a small
+            fib is welcome; reject violence, weapons, injury, death, kidnapping, serious danger, bullying, or
+            humiliating body/medical clues.
 
-            Do not demand an arbitrary multi-step logic puzzle just to increase difficulty, and do not reject a
-            clear story clue for being simple when the situation, plausible choices, and reveal make it engaging.
+            Do not demand an arbitrary multi-step logic puzzle to increase difficulty; the right kind of difficulty
+            is decoys plus one linked, fair comparison. Do not reject a case because it takes a careful second look.
             This is a concept review only; an actual-image blind visual check follows. Be strict about correctness
-            but judge the intended short-story format fairly. Questions and scene plans: """
+            but judge the intended short detective-case format fairly. Questions and scene plans: """
             + json.writeValueAsString(questions)
             + operatorSuffix(operatorDirection);
         var response = client.responses().create(ResponseCreateParams.builder().model(activeModel).input(prompt)
@@ -373,26 +429,33 @@ class StudioAi {
             Exact scene brief:
             """ + puzzle.sceneDescription();
         if ("visual".equals(puzzle.kind())) prompt = """
-            Use case: illustration-story. Create a premium 16:9 family visual challenge for children, teens,
-            and parents. Keep the polished 2D mystery-comic style: natural anatomy, refined ink contours, rich teal,
-            warm amber and coral, atmospheric light, engaging characters, and detailed but calm scenery. It must feel
-            vibrant and intelligent, never preschool, babyish, gloomy, generic, or like stock clip-art.
+            Use case: illustration-story. Create a premium 16:9 family DETECTIVE CASE illustration for children,
+            teens, and parents: the scene of a playful mystery moments after it happened. Keep the polished 2D
+            mystery-comic style: natural anatomy, refined ink contours, rich teal, warm amber and coral, a touch of
+            cinematic detective lighting (a warm key light and gentle rim light, never dark or scary), engaging
+            characters, and detailed but calm scenery. It must feel vibrant, intriguing, and intelligent, never
+            preschool, babyish, gloomy, generic, or like stock clip-art. The evidence of what happened (for example
+            the half-eaten cake or the empty trophy stand) must be clearly visible in the scene.
             This is a pure, unlabelled scene placed inside a separate application frame. Exactly three or four
-            candidate subjects specified in the scene plan must appear left-to-right in matching OPTION order.
-            Treat each candidate as a clear visual lane with enough space to distinguish them, while arranging them
-            naturally inside a coherent story moment rather than as a sterile lineup. Leave the bottom 16 percent of
+            suspects specified in the scene plan must appear left-to-right in matching OPTION order.
+            Treat each suspect as a clear visual lane with enough space to distinguish them, while arranging them
+            naturally inside a coherent case moment rather than as a sterile police lineup. Leave the bottom 16 percent of
             every candidate lane visually quiet—floor, table edge, or background only—so the application can place one
             OPTION letter below that subject without covering a face or a clue. Keep the decisive clue above this quiet strip.
             No other candidate-like
             people, mannequins, portraits, or background figures that could be mistaken for an option. Show all
             full bodies and any floor/shadow/reflection evidence completely inside the canvas. The important proof
             must be large, sharp, physically coherent, and visible at phone size—not hidden, covered, cropped,
-            implied, or merely described in the prompt. Keep all candidates comparable within the story so the
+            implied, or merely described in the prompt. Keep all suspects comparable within the case so the
             visible clue fairly supports one answer without making the others absurd or obviously different.
-            One clear, story-relevant visual clue, medium challenge for family viewers ages 6–18, readable at phone size.
-            It may be one detail or a compact pair of linked details; keep them close enough for one answer-highlight
-            circle. The clue should reward comparison and a second look, not be an instant giveaway or a tiny hunt.
-            Preserve equally plausible expressions so faces do not give the answer
+            Draw every red-herring detail the scene plan gives the innocent suspects exactly as described, clearly
+            distinguishable from the decisive clue so the answer stays unique.
+            One fair, case-relevant visual clue, a medium-hard challenge for family viewers ages 6–18, readable at
+            phone size once found. It may be one detail or a compact pair of linked details; keep the culprit's part
+            close enough for one answer-highlight circle. Integrate the clue naturally: do not spotlight, center, or
+            enlarge it beyond the decoys, and give each red-herring detail similar size and visual weight, so the
+            viewer must compare suspects carefully. Never make it a tiny hunt or an instant giveaway.
+            Give every suspect an equally calm or equally surprised expression so faces do not give the culprit
             away. Friendly make-believe, including harmless monsters or fantasy, is welcome; never scary. No text, labels, numbers, logos,
             watermarks, arrows, rings or answer highlights. No plastic 3D or preschool clip-art.
             The following scene plan is authoritative, especially its stated physical evidence and candidate order:
@@ -449,14 +512,15 @@ class StudioAi {
         String activeModel = requestedModel == null || requestedModel.isBlank() ? model : requestedModel.trim();
         if (!"live".equals(generationMode)) return new ArtworkConformance(true, "", "Offline mode: no AI conformance check.");
         String prompt = """
-            Act as a strict production art director. Compare this raw, unlabelled 16:9 puzzle illustration to the
+            Act as a strict production art director. Compare this raw, unlabelled 16:9 detective-case illustration to the
             canonical scene plan below. This is a CONFORMANCE check, not the final blind puzzle solve.
-            Accept only if: the scene reads as the supplied story moment; exactly 3 or 4 candidates are present in the required left-to-right order;
+            Accept only if: the scene reads as the supplied case moment, with the evidence of what happened visible; exactly 3 or 4 suspects are present in the required left-to-right order;
             no confusing extra candidate-like figures exist; all candidates and proof objects are fully visible;
             the stated clue or compact linked clue-pair is visibly real, readable at phone size, and supports one answer;
             its visible location and form are physically consistent with the action the story claims (do not accept
             a mark on an untouched surface or a resemblance that does not establish contact);
-            the remaining candidates make the comparison fair; anatomy, lighting, shadows and
+            the innocent suspects make the comparison fair, and every red-herring detail in the plan is present but visibly does not
+            match the decisive clue; the decisive clue is not spotlit or oversized compared with the decoys; no suspect's facial expression gives the answer away; anatomy, lighting, shadows and
             reflections are coherent; and there is no generated text, badge, logo, arrow, answer marker, or watermark.
             If any condition fails, set acceptable=false and provide a short, concrete repairBrief describing only
             the visual correction needed. Never invent a different puzzle or relax the canonical scene plan.
@@ -486,10 +550,13 @@ class StudioAi {
         var message = EasyInputMessage.builder().role(EasyInputMessage.Role.USER)
             .contentOfResponseInputMessageContentList(List.of(
                 ResponseInputContent.ofInputText(ResponseInputText.builder().text("""
-                    Solve this story-led visual mini-mystery from the displayed frame. Read its short question and story context,
-                    then return the visible OPTION letter, or NONE if uncertain.
-                    clearForKids is true only if there is one fair, medium-difficulty answer for family viewers ages 6–18.
-                    observedClue and issues must describe only visible pixels. Reject multiple fitting answers, tiny or obscured clues,
+                    Solve this family detective case from the displayed frame. Read its short question, study the scene and
+                    every suspect, then return the visible OPTION letter of the culprit, or NONE if uncertain.
+                    clearForKids is true only if there is one fair answer for family viewers ages 6–18. This channel wants
+                    medium-hard cases: a clue that needs careful comparison against decoys is GOOD, not a defect, as long as
+                    it is clearly visible once found and only one suspect fits.
+                    observedClue and issues must describe only visible pixels. A red-herring detail on an innocent suspect is not
+                    proof; decide from the evidence that actually links one suspect to the event. Reject multiple fitting answers, tiny or obscured clues,
                     obvious anatomy defects, covered faces, excessive text, or a prematurely highlighted answer. Do not assume a missing
                     shadow or reflection merely because a fantasy character is present. Do not infer a robot from ordinary clothing or disability.
                     Also return x, y, width, and height normalized 0–1 against the ENTIRE 1920×1080 frame: tightly frame the decisive
@@ -544,13 +611,14 @@ class StudioAi {
         String activeModel = requestedModel == null || requestedModel.isBlank() ? model : requestedModel.trim();
         if (!"live".equals(generationMode)) throw new IllegalStateException("Live clue analysis is required for automatic reveal highlights");
         String prompt = """
-            Inspect this final 1920x1080 story-puzzle frame. The correct answer is OPTION %s.
+            Inspect this final 1920x1080 detective-case frame. The culprit is OPTION %s.
             Locate the decisive visual clue (or the smallest compact cluster of up to two linked details) that proves it.
             Return x, y, width and height normalized 0–1 against the ENTIRE 1920x1080 frame, tightly enclosing the
             visual evidence inside the illustrated scene. Never select
             a letter badge, title, timer, border, or decoration. The region must be suitable for a bright animated circle
             during the answer reveal; it should not cover unrelated people or objects. If the clue is a missing shadow or
-            reflection, frame that relevant ground or mirror area. Use only visible pixels. Include a brief notes field.
+            reflection, frame that relevant ground or mirror area. Never frame a red-herring detail on an innocent
+            suspect. Use only visible pixels. Include a brief notes field.
             Puzzle definition: %s
             """.formatted(puzzle.answerId(), json.writeValueAsString(puzzle));
         var input = EasyInputMessage.builder().role(EasyInputMessage.Role.USER)
@@ -574,9 +642,9 @@ class StudioAi {
         var message = EasyInputMessage.builder().role(EasyInputMessage.Role.USER)
             .contentOfResponseInputMessageContentList(List.of(
                 ResponseInputContent.ofInputText(ResponseInputText.builder().text(
-                    "Solve this story-led visual mini-mystery from the displayed frame. Read its short question and story context, "
-                    + "then return the matching visible OPTION letter or NONE if uncertain. "
-                    + "clearForKids boolean for family viewers ages 6–18: true only when it is a fair medium challenge, not an instant giveaway. "
+                    "Solve this family detective case from the displayed frame. Read its short question and study every suspect, "
+                    + "then return the culprit's visible OPTION letter or NONE if uncertain. A red-herring detail is not proof. "
+                    + "clearForKids boolean for family viewers ages 6–18: true only when it is a fair medium-hard challenge, not an instant giveaway; careful comparison against decoys is good, not a defect. "
                     + "observedClue must describe only pixels actually visible, and issues must identify any defect. "
                     + "Read the short on-screen fictional rule if present. Every option must be visible; no tiny, "
                     + "ambiguous, cropped or obscured clue. For missing-shadow/reflection puzzles inspect every "

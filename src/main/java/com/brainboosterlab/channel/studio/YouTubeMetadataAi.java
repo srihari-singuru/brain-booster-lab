@@ -57,19 +57,25 @@ class YouTubeMetadataAi {
                 + " | PRIVATE ANSWER: OPTION " + p.answerId();
         }).collect(java.util.stream.Collectors.joining("\n\n"));
         String prompt = """
-            You are the YouTube packaging editor for %s, a family puzzle channel for children, teens and parents.
-            Create an accurate, high-interest upload pack for the exact finished video described below. Be curiosity-led,
-            never deceptive: do not promise a result, prize, guest, danger, or visual that the episode does not contain.
-            Use plain, natural English that a child and parent can both understand. Avoid keyword stuffing, all-caps titles,
-            false urgency, answer spoilers, and claims like 'only geniuses can solve this'. The thumbnail and title must
+            You are the YouTube packaging editor for %s, a family detective-mystery channel for children, teens and
+            parents. Each video is a set of short whodunit cases: 3–4 suspects, ten seconds to pick the culprit, then the
+            reveal. Create an accurate, high-click-through upload pack for the exact finished video described below.
+            Lead with the most intriguing case: a specific mystery plus a direct challenge beats generic words like
+            "puzzles" (e.g. "Who Ate the Birthday Cake? Solve 3 Detective Cases"). Good angles: "who did it", "who is
+            lying", "find the fake", "can you solve it in 10 seconds". Use very simple, common words that young children
+            and beginner English learners understand. Be curiosity-led, never deceptive: do not promise
+            a result, prize, guest, danger, or visual that the episode does not contain. Use plain, natural English that a
+            child and parent can both understand. Avoid keyword stuffing, all-caps titles, false urgency, fake statistics
+            such as '99%% fail', answer spoilers, and claims like 'only geniuses can solve this'. The thumbnail and title must
             set the same honest expectation and remain readable on a phone.
 
             Return exactly: one recommended title; a short reason; one unique description (first two lines should explain
             the video before any call to action); exactly three relevant hashtags; up to 15 useful search tags (tags are
             secondary metadata; include spelling variants only when genuinely useful); a concise playlist suggestion;
             one category suggestion (exactly Entertainment or Education), language (English), and one friendly pinned
-            comment that asks viewers to share which puzzle they enjoyed, without exposing answers;
-            and exactly three A/B concepts. Each A/B concept has a title, 2–5 words of thumbnail text, a puzzle number to
+            comment that invites viewers to comment their suspect picks or which case fooled them, without exposing answers;
+            and exactly three A/B concepts. Each A/B concept has a title, 2–5 words of punchy mystery thumbnail text (such as
+            "WHO DID IT?" or "WHO IS LYING?"), a puzzle number to
             feature, and one visual-direction sentence of 10–20 words and no more than 160 characters, based on the
             supplied scene. Make concept 1's title exactly match the
             recommended title. The three concepts must differ meaningfully in truthful angle and featured puzzle where

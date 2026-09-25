@@ -16,6 +16,17 @@ import tools.jackson.databind.json.JsonMapper;
 class NarrationWorkflowTest {
     @TempDir Path directory;
 
+    @Test void wordCountReportMarksOnlyLinesOutsideTheirSpeechSlots() {
+        var narration = new EpisodeNarration("Welcome to Puzzle Pop, detectives!", List.of(
+            new EpisodeNarration.PuzzleNarration(1, "Oh no! The cake is gone. Who ate it?",
+                "You have ten seconds. Go!",
+                "It was Suspect B! Look at B's hands. They have blue frosting. The cake has blue frosting too.")),
+            "Thanks for solving with us today!");
+        String report = NarrationAi.wordCountReport(narration);
+        assertThat(report).contains("puzzle 1 questionLeadIn: 9 words (allowed 24–32) NEEDS FIX",
+            "puzzle 1 timerCue: 5 words (allowed 5–7)\n", "puzzle 1 revealExplanation: 18 words (allowed 15–25)\n");
+    }
+
     @Test void savesWriterDraftAndIndependentEditorReview() throws Exception {
         StudioRepository repository = mock(StudioRepository.class);
         StudioAi puzzles = mock(StudioAi.class);

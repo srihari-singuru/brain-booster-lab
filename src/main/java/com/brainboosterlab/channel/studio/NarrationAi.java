@@ -78,46 +78,73 @@ class NarrationAi {
             return new Draft(combined, activeModel, lastResponseId);
         }
         String prompt = """
-            You are the senior story writer for Puzzle Pop, an energetic family visual-challenge channel for
-            children ages 6–18 solving alongside parents. Write natural spoken narration for the supplied episode
-            specification. This is voice-over, not on-screen copy. Make each puzzle feel like a compact, playful
-            mystery in one polished show: a vivid situation, building curiosity, a clean invitation to solve, then
-            a satisfying reveal. Sound bright and intelligent for older children and parents while remaining clear
-            for younger children. Keep sentence length and word counts remarkably even between puzzles so one steady voice speed feels natural across the full episode. Vary the storytelling rhythm and wording; never sound babyish, classroom-like, or generic.
+            You are the head writer for Puzzle Pop, an energetic family detective-mystery channel for children
+            ages 6–18 solving alongside parents. Write natural spoken narration for the supplied episode
+            specification. This is voice-over, not on-screen copy. The viewer is the detective. Make each case feel
+            like a tiny, gripping whodunit in one polished show: a punchy hook in the first sentence (what just
+            happened and why it matters), a quick nod to the suspects, the detective question, a crisp challenge to
+            solve it in ten seconds, then a triumphant, satisfying reveal. VERY SIMPLE ENGLISH comes first: every
+            line must be easy for a young child or a beginner English learner, while the story still feels exciting. Keep sentence length and word counts remarkably even between puzzles so one steady voice speed feels natural across the full episode. Vary the storytelling rhythm and wording; never sound babyish, classroom-like, or generic.
 
             Use ONLY facts, choices, answer and explanation in the specification. Never invent visual evidence,
-            character traits, extra suspects, danger, or a second puzzle rule. Do not use stock pressure such as
-            'only geniuses', shame, panic, or repeated 'are you ready'. Avoid overusing stock phrases such as
+            character traits, extra suspects, danger, or a second case rule. Do not use fake statistics or stock
+            pressure such as 'only geniuses' or '99 percent fail', shame, panic, or repeated 'are you ready'. Avoid overusing stock phrases such as
             'look closely'; never promise that the viewer can see an unclear clue. Address viewers warmly, inclusively, and with genuine
             excitement rather than pressure.
 
-            SIMPLE SPOKEN ENGLISH IS REQUIRED. Write for a child aged seven to understand on the first
-            listen, while still sounding fun for teens and parents. Use familiar everyday words, short
-            sentences, and clear action words. Avoid formal words, metaphors, idioms, long descriptions,
-            or puzzle words such as "deduce", "candidate", "evidence", "mechanism", or "conclusion".
-            The picture supplies the challenge; the voice must make the story easy to follow.
+            VERY SIMPLE, BEGINNER-FRIENDLY ENGLISH IS REQUIRED. A six-year-old or a person who is just starting to
+            learn English must understand every word on the first listen. Follow every rule:
+            - Short sentences: 3–9 words each, one idea per sentence. Use more short sentences, never one long one.
+              A tiny exclamation such as "Oh no!" or "Wow!" is fine.
+            - Only very common everyday words (the first 1,000 words a learner meets). If a simpler word exists, use
+              it: "lying" not "fibbing", "took" not "swiped", "fake" not "impostor", "the one who did it" not
+              "culprit", "look" not "observe", "wet" not "soaked", "happy" not "thrilled", "gone" not "vanished".
+            - Simple grammar only: present tense or simple past, active voice, subject then verb then object.
+              No "which", "whom", "although", "however", "whereas", "meanwhile", or other joining words. No
+              "would have", "must have been", passive voice, or clauses inside clauses.
+            - No idioms, slang, metaphors, puns, rhymes, sarcasm, or phrasal verbs that learners find hard
+              ("own up", "pull off", "get away with"). Say things plainly: "Someone ate the cake."
+            - Name things with plain, concrete words: "the cake", "blue paint", "wet shoes". Colors, numbers,
+              body parts, and everyday objects are ideal.
+            - Punctuation: only full stops, question marks, exclamation marks, and simple commas. No colons,
+              semicolons, dashes, brackets, ellipses, or quotation marks.
+            - Okay detective words: case, suspect, clue, detective, mystery, lying, fake. Avoid "deduce",
+              "candidate", "evidence", "alibi", "culprit", "impostor", "conclusion", "mechanism", "suspicious".
+            - Retell facts from the specification in simpler words when its wording is hard. Never add new facts.
+            - Repeating the on-screen question exactly is good. It helps learners connect the voice and the screen.
+            EXAMPLES OF THE RIGHT LEVEL (do not copy these stories):
+              questionLeadIn (29 words): "Oh no! The birthday cake is gone. The party starts in five minutes.
+              Mom is very sad. There are three suspects. Look at the picture. Who ate the cake?"
+              timerCue (5 words): "You have ten seconds. Go!"
+              revealExplanation (18 words): "It was Suspect B! Look at B's hands. They have blue frosting. The cake
+              has blue frosting too."
+            The picture supplies the challenge; the voice must make the case very easy to follow.
 
             Structure rules:
             - episodeOpening: one fresh welcome, 4–28 words. It will be used in a future opening, not today’s video.
             - for each puzzle, questionLeadIn: 24–32 words, designed for a lively, natural roughly ten-to-fourteen-second
               delivery at the chosen voice speed. Its measured voice duration controls the question-story screen; it
-              is NOT the thinking countdown. Briefly bring the scene to life, build curiosity, and ask the on-screen
-              question naturally. Do not add new facts or repeat the question word-for-word. Never name, label, or
-              hint at the answer or decisive clue. Keep the wording simple and the pace even across puzzles.
-            - timerCue: 5–7 words. It must invite viewers to take exactly TEN seconds. Its measured voice duration plays while the timer holds at 10; the separate fixed ten-second countdown begins immediately after it. Do not count aloud.
-            - revealExplanation: 15–25 words. Its measured voice duration controls the answer screen. Use one or two short, direct sentences; avoid colons, semicolons, ellipses, or dramatic pauses. State the correct choice and the exact
-              visible clue/rule that proves it in a lively, natural way that rewards the viewer’s reasoning.
+              is NOT the thinking countdown. Open with the hook (what just happened), add a quick beat of stakes or
+              suspense, mention how many suspects there are, and ask the on-screen question. WORD COUNT IS CHECKED
+              BY CODE: aim for 27–30 words, which is usually 5–7 short sentences. Short sentences make it easy to fall
+              under 24 words, and anything under 24 or over 32 is rejected, so add one more short sentence rather than
+              making sentences longer. Count every word before returning. Do not add new facts. Never name, label, or hint at the answer or decisive clue. Keep the words very
+              simple and the pace even across puzzles.
+            - timerCue: 5–7 very simple words, like "You have ten seconds. Go!" It must invite viewers to take exactly TEN seconds. Its measured voice duration plays while the timer holds at 10; the separate fixed ten-second countdown begins immediately after it. Do not count aloud.
+            - revealExplanation: 15–25 words; aim for 18–22 and count them. Its measured voice duration controls the answer screen. Avoid colons, semicolons, ellipses, or dramatic pauses. State the correct choice and the exact
+              visible clue/rule that proves it in 3–4 very short, simple sentences that reward the viewer's thinking.
             - episodeClosing: one fresh 4–28-word sign-off for a future ending.
-            - Never use a character name, choice label, or descriptive choice name anywhere in narration. Refer to a choice only as its supplied OPTION letter (A through E).
+            - Never use a character name, choice label, or descriptive choice name anywhere in narration. Refer to a suspect only by its supplied OPTION letter (A through D), for example "Suspect B".
             - The lead-in and timer cue must never expose an option letter, the answer, or the decisive clue.
-            - The reveal must begin with the correct OPTION letter, then unpack the visible proof with enough vivid, story-like detail to reward a careful guess.
+            - The reveal must begin by naming the right OPTION letter (for example "It was Suspect B!"), then say the visible proof in plain words. It may add one short sentence about why a tempting red herring was innocent.
             - No headings, timestamps, stage directions, sound effects, markdown, or text intended to appear on art.
 
             PRE-SUBMISSION ACCEPTANCE CHECK — silently check every puzzle beat before returning it. The lead-in
             and timer must not name or telegraph the answer, an OPTION letter, a choice name, or the decisive clue.
             The reveal must use only the correct OPTION letter and must state only the exact proof already supplied
-            in the puzzle specification. Keep the required word ranges, especially a concise 15–25-word answer, natural voice pacing, the fixed ten-second countdown, simple spoken
-            English, family-safe warmth, and a similar spoken density across every puzzle. If a line fails one of
+            in the puzzle specification. Keep the required word ranges, especially a concise 15–25-word answer, natural voice pacing, the fixed ten-second countdown, and
+            VERY SIMPLE beginner English: check every sentence is 3–9 words, every word is common and plain, and there
+            is no idiom, hard word, joining word, colon, dash, or long clause. Also keep family-safe warmth, and a similar spoken density across every puzzle. If a line fails one of
             these checks, rewrite it before returning the structured object. Return narration you expect both the
             independent script editor and final frame-grounding editor to accept without correction.
 
@@ -130,8 +157,65 @@ class NarrationAi {
         EpisodeNarration narration = response.output().stream().flatMap(item -> item.message().stream())
             .flatMap(message -> message.content().stream()).flatMap(content -> content.outputText().stream()).findFirst()
             .orElseThrow(() -> new IllegalStateException("No complete structured narration returned"));
-        narration.validate(spec);
-        return new Draft(narration, activeModel, response.id());
+        try {
+            narration.validate(spec);
+            return new Draft(narration, activeModel, response.id());
+        } catch (IllegalArgumentException invalid) {
+            // Very short beginner-English sentences can miss a word-count slot. The creator's click
+            // authorizes one targeted repair of the paid draft rather than discarding it.
+            return repairWordCounts(spec, narration, invalid.getMessage(), activeModel, operatorDirection);
+        }
+    }
+
+    private Draft repairWordCounts(EpisodeSpec spec, EpisodeNarration draft, String problem, String activeModel, String operatorDirection) {
+        String prompt = """
+            You are fixing a Puzzle Pop narration draft that failed a local check: %s
+            Word counts are measured by code as words separated by spaces. Current counts and required ranges:
+            %s
+            Return the complete corrected structured object. Change ONLY the lines marked NEEDS FIX; copy every other
+            line exactly. To lengthen a line, add one more very short, simple sentence (3–9 words) that retells a fact
+            already in the specification; to shorten it, remove a sentence. Land in the middle of each range.
+            Keep the same VERY SIMPLE beginner English: only common everyday words, no idioms, no hard words, no colons,
+            semicolons, dashes, or ellipses. Refer to suspects only by OPTION letter, for example "Suspect B". The lead-in
+            and timer cue must never reveal the answer, an OPTION letter, or the decisive clue. Count every word before
+            returning.
+            Episode specification: %s
+            Draft narration: %s
+            """.formatted(problem, wordCountReport(draft), json.writeValueAsString(spec), json.writeValueAsString(draft))
+            + operatorSuffix(operatorDirection);
+        var response = client.responses().create(ResponseCreateParams.builder().model(activeModel).input(prompt)
+            .store(false).reasoning(Reasoning.builder().effort(ReasoningEffort.LOW).build())
+            .maxOutputTokens(5000).text(EpisodeNarration.class).build());
+        EpisodeNarration repaired = response.output().stream().flatMap(item -> item.message().stream())
+            .flatMap(message -> message.content().stream()).flatMap(content -> content.outputText().stream()).findFirst()
+            .orElseThrow(() -> new IllegalStateException("No complete structured narration repair returned"));
+        try {
+            repaired.validate(spec);
+        } catch (IllegalArgumentException stillInvalid) {
+            throw new IllegalArgumentException(stillInvalid.getMessage()
+                + ". One automatic word-count repair was already tried; run Narration again.", stillInvalid);
+        }
+        return new Draft(repaired, activeModel, response.id());
+    }
+
+    static String wordCountReport(EpisodeNarration narration) {
+        var report = new StringBuilder();
+        report.append(countLine("episodeOpening", narration.episodeOpening(), 4, 28));
+        if (narration.puzzles() != null) for (var beat : narration.puzzles()) {
+            if (beat == null) continue;
+            String prefix = "puzzle " + beat.puzzleNumber() + " ";
+            report.append(countLine(prefix + "questionLeadIn", beat.questionLeadIn(), 24, 32))
+                .append(countLine(prefix + "timerCue", beat.timerCue(), 5, 7))
+                .append(countLine(prefix + "revealExplanation", beat.revealExplanation(), 15, 25));
+        }
+        report.append(countLine("episodeClosing", narration.episodeClosing(), 4, 28));
+        return report.toString();
+    }
+
+    private static String countLine(String name, String text, int minimum, int maximum) {
+        int words = text == null || text.isBlank() ? 0 : text.trim().split("\\s+").length;
+        return "- " + name + ": " + words + " words (allowed " + minimum + "–" + maximum + ")"
+            + (words < minimum || words > maximum ? " NEEDS FIX" : "") + "\n";
     }
 
     Review review(EpisodeSpec spec, EpisodeNarration narration) {
@@ -149,17 +233,21 @@ class NarrationAi {
                 "Offline fixture only; NOT an independent AI narration review.")).toList());
         String prompt = """
             You are an exacting family-audience script editor for viewers ages 6–18 and parents. Critically review the supplied Puzzle Pop
-            narration against the supplied puzzle specification. Return one finding for each puzzle, in order.
+            detective-case narration against the supplied case specification. Return one finding for each puzzle, in order.
             noAnswerLeak is true only when the question lead-in and timer cue do NOT reveal or strongly telegraph the
             correct option, character/name, answer letter, decisive visual clue, or explanation. storyFitsPuzzle is
             true only when the narration uses no invented evidence and the reveal correctly names the right answer and
-            its exact proof, identifying the answer only as the supplied OPTION letter (A through E). It must reject any use of a choice name or label.
-            familySafe is true only for warm, age-appropriate, simple language with no pressure, shame, fear, stereotypes or
-            unsafe claims. A seven-year-old must understand every line on one listen; reject formal vocabulary, idioms, metaphors,
-            or long tangled sentences. timeFits is true only when the story lead-in is 24–32 words, the timer cue is 5–7 words and explicitly says ten seconds, and the reveal is 15–25 words with no colon, semicolon, ellipsis, or dramatic pause. Measured voice duration controls its own question or answer screen; only the countdown is fixed. Be adversarial: reject generic filler, babyish delivery, classroom-like explanation, and ambiguous proof. Put concise actionable feedback
+            its exact proof, identifying the culprit only by the supplied OPTION letter (A through D), for example "Suspect B". It must reject any use of a choice name or label.
+            familySafe is true only for warm, age-appropriate, simple language with no pressure, shame, fake statistics, fear,
+            stereotypes or unsafe claims. Playful mystery suspense is welcome; real fear is not. The English must be VERY SIMPLE
+            and beginner-friendly: a six-year-old or a new English learner must understand every word on one listen. Set
+            familySafe=false for any sentence longer than about 9 words, any uncommon or formal word (for example culprit,
+            impostor, fibbing, evidence, alibi, suspicious, vanished, observe), any idiom, slang, metaphor, pun, or hard
+            phrasal verb, any passive voice or clause inside a clause, or any colon, semicolon, dash, or ellipsis. Name
+            the hard word and give a simpler replacement in notes. timeFits is true only when the story lead-in is 24–32 words, the timer cue is 5–7 words and explicitly says ten seconds, and the reveal is 15–25 words with no colon, semicolon, ellipsis, or dramatic pause. Measured voice duration controls its own question or answer screen; only the countdown is fixed. Be adversarial: reject generic filler, babyish delivery, classroom-like explanation, and ambiguous proof. Put concise actionable feedback
             in notes. timeFits accepts a 24–32-word story lead-in because its actual speech duration determines the
             story-screen length; it is not limited to ten seconds. The silent thinking countdown remains exactly ten
-            seconds for visual puzzles. Do not rubber-stamp.
+            seconds for visual puzzles. In notes, also flag a flat or generic hook that would not hold a viewer's attention. Do not rubber-stamp.
             Specification: """ + json.writeValueAsString(spec) + "\nNarration: " + json.writeValueAsString(narration) + operatorSuffix(operatorDirection);
         var response = client.responses().create(ResponseCreateParams.builder().model(activeModel).input(prompt)
             .store(false).reasoning(Reasoning.builder().effort(ReasoningEffort.MEDIUM).build())
@@ -194,8 +282,9 @@ class NarrationAi {
             specification and its proposed narration. Do not trust the written scene plan when it contradicts a frame.
 
             For every puzzle, verify that the correct option and decisive clue are truly visible, readable, and
-            unambiguous in the frame. Check that the narration names only the supplied OPTION letter (A through E), never
-            a character name or choice label. If the frame supports the puzzle, polish the narration only as needed
+            unambiguous in the frame, and that any red-herring detail on an innocent suspect does not also fit the clue.
+            Check that the narration refers to suspects only by the supplied OPTION letter (A through D, e.g. "Suspect B"),
+            never a character name or choice label. If the frame supports the puzzle, polish the narration only as needed
             to speak exactly what a family viewer ages 6–18 can fairly infer from the displayed frame. Preserve the
             voice-timed question lead-in and reveal, followed by the fixed ten-second countdown. Preserve the existing
             word-count slots exactly: questionLeadIn 24–32 words, timerCue 5–7 words, and revealExplanation 15–25
@@ -209,8 +298,10 @@ class NarrationAi {
             If any image does not prove its clue, set that finding’s visualClueConfirmed and narrationMatchesFrame
             false, explain the mismatch, and keep the narration conservative. Each notes field must be one or two short sentences, under 300 characters. Return the complete structured
             NarrationGrounding object with one finding per image in order. Before returning, silently verify that
-            the corrected narration names only OPTION letters, makes no claim beyond visible pixels, retains the
-            fixed timing and simple language, and is safe to send directly to speech when every finding passes.
+            the corrected narration refers to suspects only by OPTION letter, makes no claim beyond visible pixels, retains the
+            fixed timing, and is safe to send directly to speech when every finding passes. Any line you polish must stay in
+            VERY SIMPLE beginner English: 3–9-word sentences, only common everyday words, no idioms, no hard words such as
+            culprit, impostor, evidence, or alibi, and no colons, semicolons, dashes, or ellipses.
 
             Puzzle specification: """ + json.writeValueAsString(spec) + "\nProposed narration: " + json.writeValueAsString(narration) + operatorSuffix(operatorDirection);
         var content = new java.util.ArrayList<ResponseInputContent>();
