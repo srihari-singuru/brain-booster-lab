@@ -148,6 +148,40 @@ class StudioService {
         launch(revision, () -> regenerateSelectedPuzzle(id, revision.id, puzzleNumber - 1));
         return view(revision);
     }
+    /**
+     * Continues with the creator's chosen puzzles in a new version; no AI request is made. Passed puzzles are
+     * preselected in the UI. Choosing a puzzle the reviewer rejected is the creator's explicit override for that
+     * version, recorded like "continue with review warnings" so artwork can proceed.
+     */
+    synchronized View selectReviewedPuzzles(UUID id, List<Integer> requestedPuzzleNumbers) {
+        var source = find(id);
+        require(source.approvedAt == null, "Approved episode is immutable; create a revision");
+        require(!active(source.status), "This episode is already working in the background");
+        var original = spec(source);
+        require(source.reviewJson != null, "Run the puzzle review before choosing which puzzles to keep");
+        var review = json.readValue(source.reviewJson, StudioAi.Review.class);
+        require(review.findings() != null && review.findings().size() == original.puzzles().size(),
+            "The saved review is incomplete; run it again before choosing which puzzles to keep");
+        var positions = selectedPuzzlePositions(requestedPuzzleNumbers, original.puzzles().size());
+        boolean includesRejected = positions.stream().anyMatch(i -> {
+            var finding = review.findings().get(i);
+            return finding == null || !finding.fair() || !original.puzzles().get(i).answerId().equals(finding.independentlySolvedAnswerId());
+        });
+        var keptSpec = new EpisodeSpec(original.title(), positions.stream().map(i -> original.puzzles().get(i)).toList());
+        keptSpec.validate();
+        var sourceSettings = settings(source);
+        var revision = new StudioEpisode("Review selection of " + id + ": " + source.brief);
+        revision.settingsJson = json.writeValueAsString(new EpisodeSettings(sourceSettings.channelName(), positions.size(),
+            sourceSettings.textModel(), sourceSettings.imageModel(), sourceSettings.narrationModel(), sourceSettings.speechModel(),
+            sourceSettings.speechVoice(), sourceSettings.speechSpeed()));
+        revision.stageInstructionsJson = source.stageInstructionsJson;
+        revision.specJson = json.writeValueAsString(keptSpec);
+        revision.reviewJson = json.writeValueAsString(selectedReview(source, positions));
+        revision.puzzleReviewOverridden = includesRejected || source.puzzleReviewOverridden;
+        revision.scriptModel = source.scriptModel; revision.responseId = source.responseId;
+        revision.status = "SCRIPT_REVIEW";
+        return view(repository.saveAndFlush(revision));
+    }
     synchronized View continueWithReviewWarnings(UUID id) {
         var episode = find(id);
         require(episode.approvedAt == null, "Approved episode is immutable; create a revision");
@@ -284,7 +318,15 @@ class StudioService {
             for (int targetIndex = 0; targetIndex < positions.size(); targetIndex++) {
                 int sourceIndex = positions.get(targetIndex);
                 copyIfPresent(sourceDir.resolve("visual-review-" + sourceIndex + ".json"), targetDir.resolve("visual-review-" + targetIndex + ".json"));
-                Files.writeString(targetDir.resolve("visual-review-" + targetIndex + ".sha256"), digest(targetDir.resolve("question-" + targetIndex + ".png")));
+                // Same pixels, same puzzle: carry the paid art check and blind inspection forward so a later
+                // revision does not re-check (and possibly repair) artwork that already passed.
+                copyIfPresent(sourceDir.resolve("artwork-conformance-" + sourceIndex + ".json"), targetDir.resolve("artwork-conformance-" + targetIndex + ".json"));
+                String newHash = digest(targetDir.resolve("question-" + targetIndex + ".png"));
+                Path sourceHashFile = sourceDir.resolve("visual-review-" + sourceIndex + ".sha256");
+                if (Files.isRegularFile(sourceHashFile))
+                    copyIfPresent(sourceDir.resolve("visual-inspection-" + sourceIndex + "-" + Files.readString(sourceHashFile).trim() + ".json"),
+                        targetDir.resolve("visual-inspection-" + targetIndex + "-" + newHash + ".json"));
+                Files.writeString(targetDir.resolve("visual-review-" + targetIndex + ".sha256"), newHash);
             }
             return view(revision);
         } catch (Exception ex) { return failed(revision, ex); }
@@ -463,7 +505,8 @@ class StudioService {
                     + "that links a scene detail to one suspect. Keep it medium-hard but fair for a ten-second solve; do not add arbitrary rules. "
                     + "Make the new situation, setting, clue object, and question distinct from the rejected puzzle and concepts already in this episode. "
                     + "Rejected puzzle: " + rejectedPuzzle + "\nOther concepts already in this episode that MUST NOT be repeated:\n" + alreadyInEpisode
-                    + "\nReviewer note: " + trimForPrompt(failure.notes(), 1000);
+                    + "\nReviewer note: " + trimForPrompt(failure.notes(), 1000)
+                    + CaseBlueprint.forSlot(revisionId, failure.index(), original.puzzles().size()).direction();
                 var draft = ai.generate(source.brief, 1, production.textModel(), direction, priorTitles);
                 puzzles.set(failure.index(), draft.spec().puzzles().getFirst());
                 changed.add(failure.index());
@@ -473,6 +516,7 @@ class StudioService {
             var replacement = new EpisodeSpec(original.title(), List.copyOf(puzzles));
             replacement.validateNewChoices();
             revision.specJson = json.writeValueAsString(replacement);
+            carryPassedReviewsForward(source, original, revision, changed);
             // Regeneration is its own paid action. The operator explicitly starts Review next.
             revision.reviewJson = null;
             revision.puzzleReviewOverridden = false;
@@ -491,12 +535,14 @@ class StudioService {
             var history = recentPuzzleTitles(revisionId) + "\nCURRENT SOURCE EPISODE — do not reuse this selected puzzle or its premise:\n"
                 + puzzleHistoryLine(original.puzzles().get(index));
             String direction = stageInstructions(source).forAction("generate") + "\n\nCREATOR REQUEST: Replace puzzle " + (index + 1)
-                + " only. Make a genuinely different family challenge; do not reuse this premise. The creator will run Review manually afterward.";
+                + " only. Make a genuinely different family challenge; do not reuse this premise. The creator will run Review manually afterward."
+                + CaseBlueprint.forSlot(revisionId, index, original.puzzles().size()).direction();
             var draft = ai.generate(source.brief, 1, production.textModel(), direction, history);
             puzzles.set(index, draft.spec().puzzles().getFirst());
             var replacement = new EpisodeSpec(original.title(), List.copyOf(puzzles));
             replacement.validateNewChoices();
             revision.specJson = json.writeValueAsString(replacement);
+            carryPassedReviewsForward(source, original, revision, Set.of(index));
             revision.reviewJson = null;
             revision.puzzleReviewOverridden = false;
             revision.scriptModel = draft.model(); revision.responseId = draft.responseId();
@@ -642,10 +688,17 @@ class StudioService {
                     + "suspects, a red herring on every innocent suspect, and one fair clue that needs two linked observations. Before drafting, compare the case, clue and reveal against "
                     + "the supplied history. Choose a genuinely fresh setting and crime, and use a different CASE TYPE and "
                     + "question shape than the immediately previous case. Do not force a strange rule or complicated "
-                    + "deduction just to appear novel. Keep the clue fair, visible once found, and satisfying in a ten-second solve.";
-                var draft = recovery && number == completed + 1
-                    ? ai.generateRecovery(e.brief, 1, production.textModel(), direction + slotDirection, history)
-                    : ai.generate(e.brief, 1, production.textModel(), direction + slotDirection, history);
+                    + "deduction just to appear novel. Keep the clue fair, visible once found, and satisfying in a ten-second solve."
+                    + CaseBlueprint.forSlot(e.id, number - 1, production.puzzleCount()).direction();
+                StudioAi.Draft draft;
+                try {
+                    draft = recovery && number == completed + 1
+                        ? ai.generateRecovery(e.brief, 1, production.textModel(), direction + slotDirection, history)
+                        : ai.generate(e.brief, 1, production.textModel(), direction + slotDirection, history);
+                } catch (IllegalArgumentException invalid) {
+                    throw new IllegalArgumentException("Puzzle " + number + " did not pass local format checks: " + invalid.getMessage()
+                        + ". " + completed + " of " + production.puzzleCount() + " valid puzzles are saved; choose Continue to retry only the unfinished portion.", invalid);
+                }
                 EpisodeSpec.Puzzle puzzle = draft.spec().puzzles().getFirst();
                 var puzzles = new ArrayList<>(partial == null ? List.<EpisodeSpec.Puzzle>of() : partial.puzzles());
                 puzzles.add(puzzle);
@@ -678,13 +731,96 @@ class StudioService {
         var spec = spec(e);
         require(spec.puzzles().size() == settings(e).puzzleCount(), "Finish generating all configured puzzles before review.");
         stage(e, "REVIEWING");
+        Path progressFile = directory(id).resolve("review-progress.json");
+        int total = spec.puzzles().size(), saved = 0;
         try {
             var production = settings(e);
-            var review = ai.review(spec, production.textModel(), stageInstructions(e).forAction("review"));
+            // One request for a long episode exceeds the model deadline. Review small batches in
+            // order, saving each paid batch so a retry only reviews the puzzles still missing.
+            String specHash = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(e.specJson.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+            var findings = new ArrayList<StudioAi.Finding>(Collections.nCopies(total, null));
+            if (Files.isRegularFile(progressFile)) {
+                var progress = json.readValue(Files.readString(progressFile), ReviewProgress.class);
+                if (specHash.equals(progress.specHash()) && progress.findings() != null && progress.findings().size() == total)
+                    for (int i = 0; i < total; i++) findings.set(i, progress.findings().get(i));
+            }
+            saved = (int) findings.stream().filter(Objects::nonNull).count();
+            String direction = stageInstructions(e).forAction("review");
+            var pending = java.util.stream.IntStream.range(0, total).filter(i -> findings.get(i) == null).boxed().toList();
+            for (int from = 0; from < pending.size(); from += REVIEW_BATCH_SIZE) {
+                var indices = pending.subList(from, Math.min(pending.size(), from + REVIEW_BATCH_SIZE));
+                var batch = new EpisodeSpec(spec.title(), indices.stream().map(i -> spec.puzzles().get(i)).toList());
+                String context = indices.size() == total ? "" : episodeContextForReview(spec, indices);
+                var review = ai.review(batch, production.textModel(), direction + context);
+                var returned = review == null || review.findings() == null ? List.<StudioAi.Finding>of() : review.findings();
+                for (int k = 0; k < indices.size(); k++) {
+                    int i = indices.get(k);
+                    var finding = k < returned.size() ? returned.get(k) : null;
+                    findings.set(i, finding == null
+                        ? new StudioAi.Finding(i + 1, "NONE", false, "The reviewer returned no finding for this puzzle; run Review again.")
+                        : new StudioAi.Finding(i + 1, finding.independentlySolvedAnswerId(), finding.fair(), finding.notes()));
+                }
+                saved = (int) findings.stream().filter(Objects::nonNull).count();
+                if (saved < total) {
+                    Files.createDirectories(progressFile.getParent());
+                    Files.writeString(progressFile, json.writeValueAsString(new ReviewProgress(specHash, findings)));
+                }
+            }
+            var review = new StudioAi.Review(List.copyOf(findings));
             e.reviewJson = json.writeValueAsString(review);
+            Files.deleteIfExists(progressFile);
             stage(e, review.passes(spec) ? "SCRIPT_REVIEW" : "CHANGES_NEEDED");
             return view(e);
-        } catch (Exception ex) { return failed(e, ex); }
+        } catch (Exception ex) {
+            var view = failed(e, ex);
+            if (saved == 0 || saved == total) return view;
+            e.lastError += " " + saved + " of " + total + " puzzle reviews are saved; running Review again checks only the rest.";
+            save(e);
+            return view(e);
+        }
+    }
+
+    private static final int REVIEW_BATCH_SIZE = 3;
+    private record ReviewProgress(String specHash, List<StudioAi.Finding> findings) {}
+
+    /**
+     * After a regeneration, puzzles that already passed keep their independent result; only replaced puzzles
+     * are reviewed again. Re-judging all of them each round made long episodes practically impossible to pass.
+     */
+    private void carryPassedReviewsForward(StudioEpisode source, EpisodeSpec original, StudioEpisode revision, Set<Integer> changed) {
+        try {
+            if (source.reviewJson == null) return;
+            var review = json.readValue(source.reviewJson, StudioAi.Review.class);
+            if (review.findings() == null || review.findings().size() != original.puzzles().size()) return;
+            var findings = new ArrayList<StudioAi.Finding>();
+            for (int i = 0; i < original.puzzles().size(); i++) {
+                var finding = review.findings().get(i);
+                boolean passed = finding != null && finding.fair() && original.puzzles().get(i).answerId().equals(finding.independentlySolvedAnswerId());
+                findings.add(passed && !changed.contains(i) ? finding : null);
+            }
+            if (findings.stream().allMatch(Objects::isNull)) return;
+            String specHash = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(revision.specJson.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+            Path progress = directory(revision.id).resolve("review-progress.json");
+            Files.createDirectories(progress.getParent());
+            Files.writeString(progress, json.writeValueAsString(new ReviewProgress(specHash, findings)));
+        } catch (Exception ignored) {
+            // Carrying results forward only saves cost; without it, Review simply checks every puzzle.
+        }
+    }
+
+    /** Batched reviews still need the whole episode to catch repeated premises across batches. */
+    private static String episodeContextForReview(EpisodeSpec spec, List<Integer> reviewing) {
+        var others = new StringBuilder();
+        for (int i = 0; i < spec.puzzles().size(); i++) {
+            if (reviewing.contains(i)) continue;
+            var p = spec.puzzles().get(i);
+            others.append("- ").append(bounded(p.title(), 48)).append(" | ").append(bounded(p.question(), 60))
+                .append(" | ").append(bounded(p.setup(), 120)).append('\n');
+        }
+        String numbers = reviewing.stream().map(i -> String.valueOf(i + 1)).collect(java.util.stream.Collectors.joining(", "));
+        return "\n\nBATCHED REVIEW: you are reviewing puzzles " + numbers + " of " + spec.puzzles().size()
+            + " in this episode; number your findings from 1 for this batch only. Other cases in the same episode, for "
+            + "the repetition check only (do not review or solve them):\n" + others;
     }
 
     synchronized View narration(UUID id) {
@@ -726,23 +862,80 @@ class StudioService {
             .mapToObj(i -> dir.resolve("question-" + i + ".png")).toList();
         require(frames.stream().allMatch(Files::isRegularFile), "Prepare completed question frames before grounding narration");
         stage(e, "NARRATION_GROUNDING");
+        Path progressFile = dir.resolve("grounding-progress.json");
+        int total = spec.puzzles().size(), saved = 0;
         try {
             var production = settings(e);
-            var draft = narrator.ground(spec, narration, frames, production.narrationModel(), stageInstructions(e).forAction("ground-narration"));
-            draft.grounding().validate(spec);
-            e.narrationGroundingJson = json.writeValueAsString(draft.grounding());
-            e.narrationGroundingModel = draft.model(); e.narrationGroundingResponseId = draft.responseId();
+            String direction = stageInstructions(e).forAction("ground-narration");
+            // Many high-detail frames in one vision request exceed the model deadline. Ground small
+            // batches and save each paid batch, so a retry only checks the puzzles still missing.
+            var digest = MessageDigest.getInstance("SHA-256");
+            digest.update(e.specJson.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            digest.update(e.narrationJson.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            for (Path frame : frames) digest.update(Files.readAllBytes(frame));
+            String key = HexFormat.of().formatHex(digest.digest());
+            var beats = new ArrayList<EpisodeNarration.PuzzleNarration>(Collections.nCopies(total, null));
+            var findings = new ArrayList<NarrationGrounding.Finding>(Collections.nCopies(total, null));
+            if (Files.isRegularFile(progressFile)) {
+                var progress = json.readValue(Files.readString(progressFile), GroundingProgress.class);
+                if (key.equals(progress.key()) && progress.beats() != null && progress.beats().size() == total
+                    && progress.findings() != null && progress.findings().size() == total)
+                    for (int i = 0; i < total; i++)
+                        if (progress.beats().get(i) != null && progress.findings().get(i) != null) {
+                            beats.set(i, progress.beats().get(i)); findings.set(i, progress.findings().get(i));
+                        }
+            }
+            saved = (int) findings.stream().filter(Objects::nonNull).count();
+            String model = e.narrationGroundingModel, responseId = e.narrationGroundingResponseId;
+            var pending = java.util.stream.IntStream.range(0, total).filter(i -> findings.get(i) == null).boxed().toList();
+            for (int from = 0; from < pending.size(); from += GROUNDING_BATCH_SIZE) {
+                var indices = pending.subList(from, Math.min(pending.size(), from + GROUNDING_BATCH_SIZE));
+                var batchSpec = new EpisodeSpec(spec.title(), indices.stream().map(i -> spec.puzzles().get(i)).toList());
+                var batchBeats = new ArrayList<EpisodeNarration.PuzzleNarration>();
+                for (int k = 0; k < indices.size(); k++) {
+                    var beat = narration.puzzles().get(indices.get(k));
+                    batchBeats.add(new EpisodeNarration.PuzzleNarration(k + 1, beat.questionLeadIn(), beat.timerCue(), beat.revealExplanation()));
+                }
+                var batchNarration = new EpisodeNarration(narration.episodeOpening(), List.copyOf(batchBeats), narration.episodeClosing());
+                var draft = narrator.ground(batchSpec, batchNarration, indices.stream().map(frames::get).toList(), production.narrationModel(), direction);
+                draft.grounding().validate(batchSpec);
+                for (int k = 0; k < indices.size(); k++) {
+                    int i = indices.get(k);
+                    var beat = draft.grounding().narration().puzzles().get(k);
+                    var finding = draft.grounding().findings().get(k);
+                    beats.set(i, new EpisodeNarration.PuzzleNarration(i + 1, beat.questionLeadIn(), beat.timerCue(), beat.revealExplanation()));
+                    findings.set(i, new NarrationGrounding.Finding(i + 1, finding.visualClueConfirmed(), finding.narrationMatchesFrame(), finding.optionOnly(), finding.notes()));
+                }
+                model = draft.model(); responseId = draft.responseId();
+                saved = (int) findings.stream().filter(Objects::nonNull).count();
+                if (saved < total) Files.writeString(progressFile, json.writeValueAsString(new GroundingProgress(key, beats, findings)));
+            }
+            // Opening and closing lines are future intro/outro copy, not frame claims, so the reviewed lines are kept.
+            var grounding = new NarrationGrounding(new EpisodeNarration(narration.episodeOpening(), List.copyOf(beats), narration.episodeClosing()), List.copyOf(findings));
+            grounding.validate(spec);
+            e.narrationGroundingJson = json.writeValueAsString(grounding);
+            e.narrationGroundingModel = model; e.narrationGroundingResponseId = responseId;
             e.narrationGroundingOverridden = false;
-            if (draft.grounding().passes(spec)) {
-                e.narrationJson = json.writeValueAsString(draft.grounding().narration());
+            Files.deleteIfExists(progressFile);
+            if (grounding.passes(spec)) {
+                e.narrationJson = json.writeValueAsString(grounding.narration());
                 e.speechJson = null; e.speechModel = null; e.speechVoice = null;
-                if (production.equals(defaults)) renderer.writeNarration(spec, draft.grounding().narration(), dir);
-                else renderer.writeNarration(spec, draft.grounding().narration(), dir, production.channelName());
+                if (production.equals(defaults)) renderer.writeNarration(spec, grounding.narration(), dir);
+                else renderer.writeNarration(spec, grounding.narration(), dir, production.channelName());
                 stage(e, "ART_REVIEW");
             } else stage(e, "CHANGES_NEEDED");
             return view(e);
-        } catch (Exception ex) { return failed(e, ex); }
+        } catch (Exception ex) {
+            var view = failed(e, ex);
+            if (saved == 0 || saved == total) return view;
+            e.lastError += " " + saved + " of " + total + " puzzles are already grounded and saved; running Grounding again checks only the rest.";
+            save(e);
+            return view(e);
+        }
     }
+
+    private static final int GROUNDING_BATCH_SIZE = 3;
+    private record GroundingProgress(String key, List<EpisodeNarration.PuzzleNarration> beats, List<NarrationGrounding.Finding> findings) {}
 
     synchronized View artwork(UUID id) {
         StudioEpisode e = find(id);
@@ -760,6 +953,7 @@ class StudioService {
                 Path artwork = dir.resolve("art-" + i + ".png");
                 Path conformanceReport = dir.resolve("artwork-conformance-" + i + ".json");
                 var puzzle = spec.puzzles().get(i);
+                dropStaleOverlay(dir, i, puzzle);
                 if (!Files.isRegularFile(artwork))
                     ai.artwork(puzzle, dir, i, production.imageModel(), stageInstructions(e).forAction("artwork"));
                 // Old saved art is checked once after this upgrade too. Passing work is
@@ -771,6 +965,7 @@ class StudioService {
                     if (conformance == null) throw new IllegalStateException("Artwork conformance check returned no result");
                     if (!conformance.acceptable()) {
                         ai.repairArtwork(puzzle, dir, i, production.imageModel(), stageInstructions(e).forAction("artwork"), conformance.repairBrief());
+                        dropStaleOverlay(dir, i, puzzle);
                         conformance = production.equals(defaults)
                             ? ai.reviewArtwork(artwork, puzzle, null)
                             : ai.reviewArtwork(artwork, puzzle, production.textModel());
@@ -830,8 +1025,10 @@ class StudioService {
                 Files.writeString(report, json.writeValueAsString(visualReview));
                 Files.writeString(dir.resolve("visual-review-" + i + ".sha256"), hash);
                 Path overlayFile = dir.resolve("overlay-" + i + ".json");
-                if (Files.isRegularFile(overlayFile)) SceneOverlay.read(dir, i, spec.puzzles().get(i));
-                else if (inspection != null && inspection.answerMatches()) {
+                dropStaleOverlay(dir, i, spec.puzzles().get(i));
+                if (Files.isRegularFile(overlayFile)) {
+                    // A circle that still matches these exact pixels and answer (including a creator-placed one) is kept.
+                } else if (inspection != null && inspection.answerMatches()) {
                     // The same blind inspection supplies the reveal geometry; no second
                     // high-detail vision request is needed for every puzzle.
                     var clue = inspection.clue();
@@ -1078,6 +1275,19 @@ class StudioService {
         }
     }
     /** Removes only derived assets for a changed puzzle; all other saved work in a revision survives. */
+    /**
+     * A clue circle is bound to exact artwork pixels and the answer. When a repair image or a changed answer
+     * makes it stale, drop it so the fresh blind inspection can place a new circle, instead of failing the stage.
+     */
+    private static void dropStaleOverlay(Path dir, int index, EpisodeSpec.Puzzle puzzle) {
+        Path overlay = dir.resolve("overlay-" + index + ".json");
+        if (!Files.isRegularFile(overlay)) return;
+        try {
+            SceneOverlay.read(dir, index, puzzle);
+        } catch (Exception stale) {
+            try { Files.deleteIfExists(overlay); } catch (java.io.IOException ignored) { /* the renderer will report it */ }
+        }
+    }
     private static void clearArtworkForPuzzle(Path dir, int index) throws java.io.IOException {
         clearArtworkDerivatives(dir, index);
         if (!Files.isDirectory(dir)) return;

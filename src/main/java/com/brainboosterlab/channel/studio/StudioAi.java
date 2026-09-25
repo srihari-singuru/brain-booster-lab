@@ -139,10 +139,11 @@ class StudioAi {
             and a reveal that makes families argue happily about who they picked. Never a worksheet or IQ test.
 
             WHAT MAKES A CASE GO VIRAL — apply every point:
-            1. INSTANT HOOK: the premise lands in one sentence and creates urgency or delight, e.g. the championship
-               trophy vanished an hour before the final, or someone ate the birthday cake before the party. Be
-               specific: name the object, the place, and the moment. Generic premises are boring.
-            2. PLAYFUL STAKES: it matters to someone (a party, a contest, a show, a pet, a prize), yet stays light.
+            1. INSTANT HOOK: the first words grab attention and the premise lands at once. Be specific: name the
+               object, the place, and who is upset. Generic premises are boring. Use the hook style from the CASE
+               BLUEPRINT when one is supplied.
+            2. PLAYFUL STAKES: it matters to someone, yet stays light. Vary what is at stake from case to case;
+               do not make every case about an event that is about to start.
             3. BELIEVABLE SUSPECTS: three or four distinct suspects, each with a clear visual role and a reason they
                could have done it (everyone was near the scene). Suspects may be children, adults, animals, robots,
                or friendly fantasy creatures. All must look equally plausible at first glance.
@@ -160,19 +161,21 @@ class StudioAi {
             6. THE AHA REVEAL: once pointed out, the clue feels obvious and clever, never arbitrary or unfair.
                Viewers should want to rewatch and comment which suspect they picked.
 
-            CASE TYPES — rotate across the episode and never use the same type twice in a row:
-            - Culprit trace: the culprit carries evidence from the scene (crumbs, paint, glitter, sand, pollen, ink).
-            - Broken alibi: facts states one shared claim (e.g. "Everyone says they never left the library.") and the
-              picture proves that exactly one suspect's claim is false.
-            - The impostor: one suspect is not who they claim to be (a "pilot" whose wings badge is a sticker, a
-              "knight" whose armor is painted cardboard); prove it with one visible detail.
-            - Trail and tracks: footprints, paw prints, toy-cart wheel tracks, drips, or a crumb trail that match
-              one suspect's shoes, paws, or item.
-            - Timeline clue: visible states show who was there most recently (melting ice cream, steaming cocoa,
-              still-wet shiny footprints). No clock reading or time calculation.
-            - Hidden in plain sight: a reflection, shadow, window, or open bag reveals what one suspect is hiding.
-            - Simple rule case: facts states one clear fictional rule ("Only the real wizard's wand glows near the
-              dragon egg.") and the picture shows who fits or breaks it.
+            CASE FORMAT: the studio supplies a CASE BLUEPRINT for each case (format, world, suspect cast, hook style,
+            suspect count, answer letter, and sometimes a twist). Follow it exactly. It exists because separate
+            requests otherwise drift into the same case again and again. Some formats have a witness or an honest
+            suspect as the answer instead of a culprit; always build the case so the blueprint's answer letter is the
+            one suspect that answers the question. If no blueprint is supplied, choose a clue format yourself and
+            make it different from the history.
+
+            ANTI-REPETITION RULES — the recent history shows these patterns were overused, so avoid them:
+            - Do not write setups shaped like "X happened just before the party/show/contest! Three helpers are
+              nearby." Never use the words "helpers" or "nearby" for the suspects, and avoid "just before".
+            - Do not default to "the missing object is hidden on the culprit" or "a mark matches a pattern" unless
+              the blueprint asks for that format.
+            - Avoid the overused title endings Secret, Trick, Mystery, Surprise, and Trouble. Vary title shapes:
+              "The Case of ...", a question, a punchy headline, or a character's name.
+            - Vary the opening words of the setup, the question wording, and the reveal wording across cases.
 
             SAFETY AND TONE: cozy, funny mysteries, never scary. Allowed "crimes": a missing snack or cake, a swapped or
             vanished trophy, an item borrowed without asking, a harmless prank, a broken vase, an escaped pet, a spoiled
@@ -216,24 +219,26 @@ class StudioAi {
             history guide the idea. Novelty means a genuinely new scene and deduction, not a bizarre rule.
 
             CHALLENGE DESIGN: exactly three or four suspects with consecutive OPTION letters A/B/C or A/B/C/D; never
-            five. Suspects stand clearly separated left to right in OPTION order. Spread correct letters across the
-            episode using the included answer history. Never accuse without visible proof.
+            five. Suspects stand clearly separated left to right in OPTION order. Use the suspect count and answer
+            letter from the CASE BLUEPRINT. Never accuse without visible proof.
 
             WRITE THE FIELDS THIS WAY:
-            title: a punchy case title, max 48 characters, e.g. "The Case of the Vanishing Cupcakes"; episode title
-            max 65.
-            setup: one exciting hook in very simple English, max 155 characters, written as 2–4 short sentences:
-            what happened, where, why it matters, and how many suspects there are. Never reveal the clue.
-            question: one direct detective question, max 10 words and 60 characters, using only very common words,
-            e.g. "Who ate the birthday cake?", "Who is lying?", "Who is the fake chef?". A six-year-old or a beginner
+            title: a punchy case title, max 48 characters, in a fresh shape (see the anti-repetition rules); episode
+            title max 65.
+            setup: one exciting hook in very simple English, max 155 characters, written as 2–4 short sentences.
+            Start with the blueprint's hook style, then say what happened, where, and why it matters, and introduce
+            the suspects by their vivid roles (for example "a chef, a clown, and a robot"). Never reveal the clue.
+            question: one direct detective question in the blueprint's question shape, max 10 words and 60
+            characters, using only very common words. A six-year-old or a beginner
             English learner must understand it at once. Never use hard words such as culprit, impostor, or fibbing.
-            facts: zero or one line, max 65 characters, only for a broken-alibi claim or one essential fictional rule.
+            facts: zero or one line, max 65 characters, only for a shared claim or one essential fictional rule.
             choices: 3–4 suspects with consecutive OPTION letters from A. label: a short, unique first name, max 24
             characters, never a role word, because narration refers to suspects only by letter. statement: max 100
             characters for the artist: the suspect's role, look, and any red-herring or decisive detail they carry.
-            explanation: the reveal in very simple English, ideally 10–14 words, never over 18 words or 85
-            characters. Name the right letter first, then point to the exact visible clue in plain words, e.g.
-            "Suspect B! B has blue frosting on her hands."
+            explanation: the reveal in very simple English. CHARACTER COUNT IS CHECKED BY CODE: aim for 50–75
+            characters and 9–13 words; anything over 85 characters or 18 words is rejected. Name the right letter
+            first, then the two linked details in the fewest plain words, e.g. "Suspect B! B has pink frosting,
+            like the cake." Count the characters before returning; if it is long, cut words, not clues.
             sceneDescription: max %s characters. Describe the scene of the case, including visible evidence of what
             happened (the half-eaten cake, the empty trophy stand), then exactly the 3–4 suspects in left-to-right
             OPTION order with role, pose, and specified details. State precisely where the decisive clue is and how
@@ -281,8 +286,78 @@ class StudioAi {
             spec = new EpisodeSpec(spec.title(), List.of(spec.puzzles().getFirst()));
         // Persist the paid structured response before local/independent validation in the service.
         EpisodeSpec.require(spec.puzzles().size() == puzzleCount, "The script returned the wrong number of puzzles; retry generation");
-        spec.validateNewChoices();
-        return new Draft(spec, activeModel, response.id());
+        try {
+            spec.validateNewChoices();
+            return new Draft(spec, activeModel, response.id());
+        } catch (IllegalArgumentException invalid) {
+            // A single field slightly over its limit should not discard a paid, otherwise good puzzle.
+            // The creator's click authorizes one targeted repair; the service never loops.
+            if (puzzleCount != 1) throw invalid;
+            return repairFormat(spec, invalid.getMessage(), activeModel);
+        }
+    }
+
+    private Draft repairFormat(EpisodeSpec draft, String problem, String activeModel) {
+        String prompt = """
+            You are fixing a Puzzle Pop detective case that failed a local format check: %s
+            Current lengths and limits (characters unless marked words):
+            %s
+            Return the complete corrected structured object with exactly this one case. Change ONLY the fields marked
+            NEEDS FIX; copy every other field exactly, including the answer, suspects, their order, and the scene. To
+            shorten a field, cut words while keeping the same meaning and clue; aim well below each limit. Keep VERY
+            SIMPLE beginner English, kind="visual", thinkSeconds=10, and 3–4 choices with consecutive letters from A.
+            Count characters and words before returning.
+            Case to fix: %s
+            """.formatted(problem, formatReport(draft), json.writeValueAsString(draft));
+        var response = client.responses().create(ResponseCreateParams.builder().model(activeModel).input(prompt)
+            .store(false).reasoning(Reasoning.builder().effort(ReasoningEffort.LOW).build())
+            .maxOutputTokens(4000).text(EpisodeSpec.class).build());
+        EpisodeSpec repaired = response.output().stream().flatMap(i -> i.message().stream())
+            .flatMap(m -> m.content().stream()).flatMap(c -> c.outputText().stream()).findFirst()
+            .orElseThrow(() -> new IllegalStateException("No complete structured puzzle repair returned"));
+        repaired = normalizeOptionIds(repaired);
+        EpisodeSpec.require(repaired.puzzles() != null && !repaired.puzzles().isEmpty(), "The format repair returned no puzzle; retry generation");
+        if (repaired.puzzles().size() != 1) repaired = new EpisodeSpec(repaired.title(), List.of(repaired.puzzles().getFirst()));
+        try {
+            repaired.validateNewChoices();
+        } catch (IllegalArgumentException stillInvalid) {
+            throw new IllegalArgumentException(stillInvalid.getMessage()
+                + ". One automatic format repair was already tried", stillInvalid);
+        }
+        return new Draft(repaired, activeModel, response.id());
+    }
+
+    static String formatReport(EpisodeSpec spec) {
+        var report = new StringBuilder();
+        report.append(lengthLine("episode title", spec.title(), 65));
+        if (spec.puzzles() != null) for (var p : spec.puzzles()) {
+            if (p == null) continue;
+            report.append(lengthLine("title", p.title(), 48))
+                .append(lengthLine("setup", p.setup(), 155))
+                .append(lengthLine("question", p.question(), 60))
+                .append(wordLine("question", p.question(), 10));
+            if (p.facts() != null) for (String fact : p.facts()) report.append(lengthLine("fact", fact, 65));
+            if (p.choices() != null) for (var c : p.choices()) {
+                if (c == null) continue;
+                report.append(lengthLine("choice " + c.id() + " label", c.label(), 24))
+                    .append(lengthLine("choice " + c.id() + " statement", c.statement(), 100));
+            }
+            report.append(lengthLine("explanation", p.explanation(), 85))
+                .append(wordLine("explanation", p.explanation(), 18))
+                .append(lengthLine("sceneDescription", p.sceneDescription(), 1600));
+        }
+        return report.toString();
+    }
+
+    private static String lengthLine(String name, String value, int max) {
+        int length = value == null ? 0 : value.length();
+        return "- " + name + ": " + length + " (max " + max + ")"
+            + (value == null || value.isBlank() || length > max ? " NEEDS FIX" : "") + "\n";
+    }
+
+    private static String wordLine(String name, String value, int max) {
+        int words = value == null || value.isBlank() ? 0 : value.trim().split("\\s+").length;
+        return "- " + name + ": " + words + " words (max " + max + " words)" + (words > max ? " NEEDS FIX" : "") + "\n";
     }
 
     /** Models occasionally spell identifiers as "OPTION C"; storage uses canonical A–D IDs. */
@@ -345,7 +420,9 @@ class StudioAi {
             broken claim to visible proof. The clue should feel meaningful in the case—not a random mismatch—and be
             easy to explain in simple spoken English. Ask: would this hook make a viewer stop scrolling, can they
             understand the question at once, and will the answer feel earned when the clue is revealed?
-            Mark fair=false for a giveaway where the culprit is the only suspect with anything unusual, where the
+            Some cases ask for a witness, the honest suspect, or the fake instead of a culprit; judge them by the same
+            fairness rules, and solve for whichever suspect answers the question asked.
+            Mark fair=false for a giveaway where the answer is the only suspect with anything unusual, where the
             answer can be picked from one lone oddity without linking two details, or where a red herring is not
             actually ruled out by visible evidence.
 
@@ -551,7 +628,8 @@ class StudioAi {
             .contentOfResponseInputMessageContentList(List.of(
                 ResponseInputContent.ofInputText(ResponseInputText.builder().text("""
                     Solve this family detective case from the displayed frame. Read its short question, study the scene and
-                    every suspect, then return the visible OPTION letter of the culprit, or NONE if uncertain.
+                    every suspect, then return the visible OPTION letter of the one suspect that answers the question (usually
+                    the culprit, but some cases ask for a witness, the honest suspect, or the fake), or NONE if uncertain.
                     clearForKids is true only if there is one fair answer for family viewers ages 6–18. This channel wants
                     medium-hard cases: a clue that needs careful comparison against decoys is GOOD, not a defect, as long as
                     it is clearly visible once found and only one suspect fits.
@@ -611,7 +689,7 @@ class StudioAi {
         String activeModel = requestedModel == null || requestedModel.isBlank() ? model : requestedModel.trim();
         if (!"live".equals(generationMode)) throw new IllegalStateException("Live clue analysis is required for automatic reveal highlights");
         String prompt = """
-            Inspect this final 1920x1080 detective-case frame. The culprit is OPTION %s.
+            Inspect this final 1920x1080 detective-case frame. The correct answer is OPTION %s.
             Locate the decisive visual clue (or the smallest compact cluster of up to two linked details) that proves it.
             Return x, y, width and height normalized 0–1 against the ENTIRE 1920x1080 frame, tightly enclosing the
             visual evidence inside the illustrated scene. Never select
@@ -643,7 +721,7 @@ class StudioAi {
             .contentOfResponseInputMessageContentList(List.of(
                 ResponseInputContent.ofInputText(ResponseInputText.builder().text(
                     "Solve this family detective case from the displayed frame. Read its short question and study every suspect, "
-                    + "then return the culprit's visible OPTION letter or NONE if uncertain. A red-herring detail is not proof. "
+                    + "then return the visible OPTION letter of the suspect that answers the question, or NONE if uncertain. A red-herring detail is not proof. "
                     + "clearForKids boolean for family viewers ages 6–18: true only when it is a fair medium-hard challenge, not an instant giveaway; careful comparison against decoys is good, not a defect. "
                     + "observedClue must describe only pixels actually visible, and issues must identify any defect. "
                     + "Read the short on-screen fictional rule if present. Every option must be visible; no tiny, "

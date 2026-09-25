@@ -33,6 +33,116 @@ class StudioServiceTest {
         verify(ai,times(3)).generate(eq("Test"),eq(1),eq("gpt-4o-mini"),anyString(),anyString());
         verify(ai, never()).review(any(),any(),any());
     }
+    @Test void longEpisodeReviewRunsInBatchesAndResumesAfterATimeout() {
+        var json=JsonMapper.builder().build();
+        var puzzle=PilotFixtures.kids().puzzles().getFirst();
+        var spec=new EpisodeSpec("Seven cases",java.util.Collections.nCopies(7,puzzle));
+        episode.specJson=json.writeValueAsString(spec);
+        episode.settingsJson=json.writeValueAsString(new EpisodeSettings("PUZZLE POP",7,"gpt-4o-mini","gpt-image-1","gpt-4o-mini","gpt-4o-mini-tts","cedar",1));
+        var calls=new java.util.concurrent.atomic.AtomicInteger();
+        when(ai.review(any(),any(),any())).thenAnswer(invocation -> {
+            EpisodeSpec batch=invocation.getArgument(0);
+            if (calls.incrementAndGet()==2) throw new RuntimeException(new java.net.SocketTimeoutException("deadline"));
+            return new StudioAi.Review(java.util.stream.IntStream.range(0,batch.puzzles().size())
+                .mapToObj(i -> new StudioAi.Finding(i+1,batch.puzzles().get(i).answerId(),true,"Fair")).toList());
+        });
+
+        var failed=service.review(episode.id);
+        assertThat(failed.status()).isEqualTo("FAILED");
+        assertThat(failed.lastError()).contains("request deadline","3 of 7 puzzle reviews are saved");
+
+        var reviewed=service.review(episode.id);
+        assertThat(reviewed.status()).isEqualTo("SCRIPT_REVIEW");
+        assertThat(reviewed.review().findings()).extracting(StudioAi.Finding::puzzleNumber).containsExactly(1,2,3,4,5,6,7);
+        // 1 saved batch + 1 timed out + 2 remaining batches; the saved first batch is never paid for again.
+        verify(ai,times(4)).review(any(),any(),any());
+        verify(ai,times(1)).review(argThat(batch -> batch != null && batch.puzzles().size()==1),any(),any());
+        assertThat(Files.exists(directory.resolve(episode.id.toString()).resolve("review-progress.json"))).isFalse();
+    }
+    @Test void reviewSelectionKeepsChosenPuzzlesAndRecordsAnOverrideOnlyForKeptFailures() {
+        var json=JsonMapper.builder().build();
+        var spec=PilotFixtures.kids();
+        episode.specJson=json.writeValueAsString(spec);
+        episode.settingsJson=json.writeValueAsString(new EpisodeSettings("PUZZLE POP",3,"gpt-4o-mini","gpt-image-1","gpt-4o-mini","gpt-4o-mini-tts","cedar",1));
+        episode.reviewJson=json.writeValueAsString(new StudioAi.Review(List.of(
+            new StudioAi.Finding(1,spec.puzzles().get(0).answerId(),true,"Fair"),
+            new StudioAi.Finding(2,"NONE",false,"Ambiguous"),
+            new StudioAi.Finding(3,spec.puzzles().get(2).answerId(),true,"Fair"))));
+        episode.status="CHANGES_NEEDED";
+
+        var passedOnly=service.selectReviewedPuzzles(episode.id,List.of(1,3));
+        assertThat(passedOnly.id()).isNotEqualTo(episode.id);
+        assertThat(passedOnly.status()).isEqualTo("SCRIPT_REVIEW");
+        assertThat(passedOnly.spec().puzzles()).containsExactly(spec.puzzles().get(0),spec.puzzles().get(2));
+        assertThat(passedOnly.settings().puzzleCount()).isEqualTo(2);
+        assertThat(passedOnly.review().passes(passedOnly.spec())).isTrue();
+        assertThat(passedOnly.puzzleReviewOverridden()).isFalse();
+
+        var withFailure=service.selectReviewedPuzzles(episode.id,List.of(2,3));
+        assertThat(withFailure.spec().puzzles()).containsExactly(spec.puzzles().get(1),spec.puzzles().get(2));
+        assertThat(withFailure.review().passes(withFailure.spec())).isFalse();
+        assertThat(withFailure.puzzleReviewOverridden()).isTrue();
+
+        assertThatThrownBy(() -> service.selectReviewedPuzzles(episode.id,List.of())).hasMessageContaining("at least one puzzle");
+        assertThat(episode.status).isEqualTo("CHANGES_NEEDED");
+        verifyNoInteractions(ai);
+    }
+    @Test void reviewAfterRegenerationChecksOnlyPuzzlesWithoutAPassingResult() throws Exception {
+        var json=JsonMapper.builder().build();
+        var spec=PilotFixtures.kids();
+        episode.specJson=json.writeValueAsString(spec);
+        episode.settingsJson=json.writeValueAsString(new EpisodeSettings("PUZZLE POP",3,"gpt-4o-mini","gpt-image-1","gpt-4o-mini","gpt-4o-mini-tts","cedar",1));
+        var hash=java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(episode.specJson.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        var carried=new java.util.ArrayList<StudioAi.Finding>(java.util.Arrays.asList(
+            new StudioAi.Finding(1,spec.puzzles().get(0).answerId(),true,"Fair"),null,
+            new StudioAi.Finding(3,spec.puzzles().get(2).answerId(),true,"Fair")));
+        Path dir=directory.resolve(episode.id.toString()); Files.createDirectories(dir);
+        Files.writeString(dir.resolve("review-progress.json"),json.writeValueAsString(java.util.Map.of("specHash",hash,"findings",carried)));
+        when(ai.review(any(),any(),any())).thenAnswer(invocation -> {
+            EpisodeSpec batch=invocation.getArgument(0);
+            return new StudioAi.Review(List.of(new StudioAi.Finding(1,batch.puzzles().getFirst().answerId(),true,"Fair")));
+        });
+
+        var reviewed=service.review(episode.id);
+        assertThat(reviewed.status()).isEqualTo("SCRIPT_REVIEW");
+        verify(ai,times(1)).review(argThat(batch -> batch != null && batch.puzzles().equals(List.of(spec.puzzles().get(1)))),any(),
+            argThat(direction -> direction != null && direction.contains("reviewing puzzles 2 of 3")));
+        assertThat(Files.exists(dir.resolve("review-progress.json"))).isFalse();
+    }
+    @Test void longEpisodeGroundingRunsInBatchesAndResumesAfterATimeout() throws Exception {
+        var json=JsonMapper.builder().build();
+        var puzzle=PilotFixtures.kids().puzzles().getFirst();
+        var spec=new EpisodeSpec("Seven cases",java.util.Collections.nCopies(7,puzzle));
+        String leadIn="Oh no! The party snacks are gone. The guests arrive in five minutes. Mom is very sad. There are three suspects here. Look at the picture. Who took the snacks?";
+        String reveal="It was Suspect B! Look at the floor. B has no shadow. The other two friends have shadows.";
+        var beats=java.util.stream.IntStream.range(0,7).mapToObj(i -> new EpisodeNarration.PuzzleNarration(i+1,leadIn,"You have ten seconds. Go!",reveal)).toList();
+        var narration=new EpisodeNarration("Welcome to Puzzle Pop, detectives!",beats,"Thanks for solving with us today!");
+        narration.validate(spec);
+        episode.specJson=json.writeValueAsString(spec);
+        episode.narrationJson=json.writeValueAsString(narration);
+        episode.settingsJson=json.writeValueAsString(new EpisodeSettings("PUZZLE POP",7,"gpt-4o-mini","gpt-image-1","gpt-4o-mini","gpt-4o-mini-tts","cedar",1));
+        Path dir=directory.resolve(episode.id.toString()); Files.createDirectories(dir);
+        for (int i=0;i<7;i++) Files.write(dir.resolve("question-"+i+".png"),new byte[]{(byte)i});
+        var calls=new java.util.concurrent.atomic.AtomicInteger();
+        when(narrator.ground(any(),any(),any(),any(),any())).thenAnswer(invocation -> {
+            EpisodeSpec batch=invocation.getArgument(0); EpisodeNarration batchNarration=invocation.getArgument(1); List<Path> frames=invocation.getArgument(2);
+            assertThat(frames).hasSize(batch.puzzles().size());
+            if (calls.incrementAndGet()==2) throw new RuntimeException(new java.net.SocketTimeoutException("deadline"));
+            return new NarrationAi.GroundedDraft(new NarrationGrounding(batchNarration, java.util.stream.IntStream.range(0,batch.puzzles().size())
+                .mapToObj(i -> new NarrationGrounding.Finding(i+1,true,true,true,"Clue visible.")).toList()),"test-model","resp-"+calls.get());
+        });
+
+        var failed=service.groundNarration(episode.id);
+        assertThat(failed.status()).isEqualTo("FAILED");
+        assertThat(failed.lastError()).contains("request deadline","3 of 7 puzzles are already grounded");
+
+        var grounded=service.groundNarration(episode.id);
+        assertThat(grounded.status()).isEqualTo("ART_REVIEW");
+        assertThat(grounded.narrationGrounding().findings()).extracting(NarrationGrounding.Finding::puzzleNumber).containsExactly(1,2,3,4,5,6,7);
+        assertThat(grounded.narrationGrounding().narration().puzzles()).extracting(EpisodeNarration.PuzzleNarration::puzzleNumber).containsExactly(1,2,3,4,5,6,7);
+        verify(narrator,times(4)).ground(any(),any(),any(),any(),any());
+        assertThat(Files.exists(dir.resolve("grounding-progress.json"))).isFalse();
+    }
     @Test void recordsTheExactFailedStageForManualRecovery() {
         when(ai.generate(eq("Test"),eq(1),eq("gpt-4o-mini"),anyString(),anyString())).thenThrow(new IllegalStateException("Provider unavailable"));
         var result=service.generate(episode.id);
@@ -117,6 +227,53 @@ class StudioServiceTest {
         assertThat(view.visualReviews().get(1).acceptable()).isFalse();
         assertThat(view.visualReviews().get(1).notes()).contains("missing");
         assertThat(view.visualReviews().get(2).acceptable()).isTrue();
+    }
+    @Test void staleClueCircleAfterARepairImageIsReplacedInsteadOfFailingTheStage() throws Exception {
+        var mapper = JsonMapper.builder().build(); var spec = PilotFixtures.kids();
+        episode.specJson = mapper.writeValueAsString(spec);
+        episode.reviewJson = mapper.writeValueAsString(new StudioAi.Review(java.util.stream.IntStream.range(0, 3)
+            .mapToObj(i -> new StudioAi.Finding(i + 1, spec.puzzles().get(i).answerId(), true, "Fair")).toList()));
+        episode.settingsJson = mapper.writeValueAsString(new EpisodeSettings("PUZZLE POP", 3, "gpt-4o-mini", "gpt-image-1", "gpt-4o-mini", "gpt-4o-mini-tts", "cedar", 1));
+        Path dir = directory.resolve(episode.id.toString()); Files.createDirectories(dir);
+        for (int i = 0; i < 3; i++) {
+            Files.write(dir.resolve("art-" + i + ".png"), new byte[]{(byte) (i + 1), 9, 9});
+            Files.writeString(dir.resolve("artwork-conformance-" + i + ".json"), mapper.writeValueAsString(new StudioAi.ArtworkConformance(true, "", "ok")));
+            // Circle copied from an earlier version whose image was later replaced by a repair image.
+            Files.writeString(dir.resolve("overlay-" + i + ".json"), mapper.writeValueAsString(
+                new SceneOverlay("0".repeat(64), spec.puzzles().get(i).answerId(), new SceneOverlay.Region(.2, .2, .2, .2))));
+        }
+        doAnswer(invocation -> {
+            EpisodeSpec rendered = invocation.getArgument(0); Path target = invocation.getArgument(1);
+            for (int i = 0; i < rendered.puzzles().size(); i++) {
+                SceneOverlay.read(target, i, rendered.puzzles().get(i)); // the real renderer fails on a stale circle
+                Files.write(target.resolve("question-" + i + ".png"), new byte[]{(byte) (i + 5), 4, 3});
+            }
+            return null;
+        }).when(renderer).previews(any(EpisodeSpec.class), any(Path.class), anyString());
+        when(ai.inspectVisualFrame(any(), any(), any())).thenReturn(new StudioAi.VisualInspection(
+            new StudioAi.VisualReview(true, "Clear."), new StudioAi.ClueLocation(.5, .5, .1, .1, "clue"), true));
+
+        var result = service.artwork(episode.id);
+        assertThat(result.status()).isEqualTo("ART_REVIEW");
+        for (int i = 0; i < 3; i++) {
+            var overlay = SceneOverlay.read(dir, i, spec.puzzles().get(i));
+            assertThat(overlay.artworkSha256()).isEqualTo(SceneOverlay.hash(dir.resolve("art-" + i + ".png")));
+        }
+        verify(ai, never()).repairArtwork(any(), any(), anyInt(), any(), any(), any());
+    }
+    @Test void artworkSelectionCarriesPaidArtChecksForward() throws Exception {
+        prepareArtworkSelection(0);
+        Path source = directory.resolve(episode.id.toString());
+        for (int i = 0; i < 3; i++) {
+            Files.writeString(source.resolve("artwork-conformance-" + i + ".json"), "{\"acceptable\":true,\"repairBrief\":\"\",\"notes\":\"ok " + i + "\"}");
+            String hash = Files.readString(source.resolve("visual-review-" + i + ".sha256")).trim();
+            Files.writeString(source.resolve("visual-inspection-" + i + "-" + hash + ".json"), "{\"inspection\":" + i + "}");
+        }
+        var selected = service.selectArtworkPuzzles(episode.id, List.of(1, 3));
+        Path target = directory.resolve(selected.id().toString());
+        assertThat(Files.readString(target.resolve("artwork-conformance-1.json"))).contains("ok 2");
+        String newHash = Files.readString(target.resolve("visual-review-1.sha256")).trim();
+        assertThat(Files.readString(target.resolve("visual-inspection-1-" + newHash + ".json"))).contains("\"inspection\":2");
     }
     private EpisodeSpec prepareArtworkSelection(int failedPuzzleNumber) throws Exception {
         var mapper = JsonMapper.builder().build(); var spec = PilotFixtures.sample();

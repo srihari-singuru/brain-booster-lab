@@ -42,6 +42,8 @@ class StudioController {
     @PostMapping(value = "/{id}/continue-with-review-warnings", consumes = "application/json") StudioService.View continueWithReviewWarnings(@PathVariable UUID id) {
         return studio.continueWithReviewWarnings(id);
     }
+    @PostMapping(value = "/{id}/review-selection", consumes = "application/json") StudioService.View reviewSelection(@PathVariable UUID id,
+        @RequestBody ArtworkSelection selection) { return studio.selectReviewedPuzzles(id, selection == null ? null : selection.puzzleNumbers()); }
     @PostMapping(value = "/{id}/regenerate-failed-puzzles", consumes = "application/json") StudioService.View regenerateFailedPuzzles(@PathVariable UUID id) {
         return studio.startFailedReviewPuzzlesRegeneration(id);
     }

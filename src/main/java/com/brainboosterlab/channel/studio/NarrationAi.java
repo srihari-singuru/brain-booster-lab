@@ -66,7 +66,7 @@ class NarrationAi {
             String lastResponseId = "";
             for (int i = 0; i < spec.puzzles().size(); i++) {
                 EpisodeSpec onePuzzle = new EpisodeSpec(spec.title(), List.of(spec.puzzles().get(i)));
-                Draft one = write(onePuzzle, activeModel, operatorDirection);
+                Draft one = write(onePuzzle, activeModel, operatorDirection + varietyHint(i));
                 EpisodeNarration.PuzzleNarration beat = one.narration().puzzles().getFirst();
                 beats.add(new EpisodeNarration.PuzzleNarration(i + 1, beat.questionLeadIn(), beat.timerCue(), beat.revealExplanation()));
                 if (first == null) first = one.narration();
@@ -125,12 +125,15 @@ class NarrationAi {
             - for each puzzle, questionLeadIn: 24–32 words, designed for a lively, natural roughly ten-to-fourteen-second
               delivery at the chosen voice speed. Its measured voice duration controls the question-story screen; it
               is NOT the thinking countdown. Open with the hook (what just happened), add a quick beat of stakes or
-              suspense, mention how many suspects there are, and ask the on-screen question. WORD COUNT IS CHECKED
+              suspense, introduce the suspects, and ask the on-screen question. Every case must open differently: rotate
+              between a sound word, a quote from someone in the story, a question to the viewer, a news headline, a
+              funny sight, and a ticking clock. Introduce the suspects a new way each time (by their roles, or "Four
+              friends were there."); never reuse the same sentence in an episode. WORD COUNT IS CHECKED
               BY CODE: aim for 27–30 words, which is usually 5–7 short sentences. Short sentences make it easy to fall
               under 24 words, and anything under 24 or over 32 is rejected, so add one more short sentence rather than
               making sentences longer. Count every word before returning. Do not add new facts. Never name, label, or hint at the answer or decisive clue. Keep the words very
               simple and the pace even across puzzles.
-            - timerCue: 5–7 very simple words, like "You have ten seconds. Go!" It must invite viewers to take exactly TEN seconds. Its measured voice duration plays while the timer holds at 10; the separate fixed ten-second countdown begins immediately after it. Do not count aloud.
+            - timerCue: 5–7 very simple words, and a different one for every case in the episode, for example: "You have ten seconds. Go!", "Ten seconds, detective. Start now!", "Can you solve it in ten seconds?", "Your ten seconds start right now!", "Find the clue in ten seconds!", "Ten seconds on the clock. Go!", "Think fast! You have ten seconds.", "Quick, detective! Ten seconds. Go!". It must invite viewers to take exactly TEN seconds. Its measured voice duration plays while the timer holds at 10; the separate fixed ten-second countdown begins immediately after it. Do not count aloud.
             - revealExplanation: 15–25 words; aim for 18–22 and count them. Its measured voice duration controls the answer screen. Avoid colons, semicolons, ellipses, or dramatic pauses. State the correct choice and the exact
               visible clue/rule that proves it in 3–4 very short, simple sentences that reward the viewer's thinking.
             - episodeClosing: one fresh 4–28-word sign-off for a future ending.
@@ -331,6 +334,19 @@ class NarrationAi {
         }).toList();
         return new EpisodeNarration("Welcome to Puzzle Pop, where every small clue can spark a brilliant idea.",
             beats, "Wonderful thinking today. Keep noticing the little details, and come back for another cheerful puzzle.");
+    }
+
+    private static final List<String> OPENING_STYLES = List.of("a sound word such as \"CRASH!\" or \"SPLASH!\"",
+        "a short quote from someone in the story", "a question to the viewer", "a news headline such as \"Breaking news!\"",
+        "a funny sight", "a ticking clock such as \"The show starts in two minutes.\"");
+    private static final List<String> TIMER_CUES = List.of("You have ten seconds. Go!", "Ten seconds, detective. Start now!",
+        "Can you solve it in ten seconds?", "Your ten seconds start right now!", "Find the clue in ten seconds!",
+        "Ten seconds on the clock. Go!", "Think fast! You have ten seconds.", "Quick, detective! Ten seconds. Go!");
+
+    /** One-case batches cannot see each other, so each gets its own opening style and timer line. */
+    static String varietyHint(int index) {
+        return "\n\nVARIETY FOR THIS CASE: open the question lead-in with " + OPENING_STYLES.get(index % OPENING_STYLES.size())
+            + ", and use exactly this timer cue: \"" + TIMER_CUES.get(index % TIMER_CUES.size()) + "\"";
     }
 
     private static String operatorSuffix(String direction) {

@@ -151,7 +151,7 @@ function actionFor(e, index) {
   return actions[index] || null;
 }
 function waitingMessage(e, index) {
-  const requirements = [null, 'Generate puzzles first.', 'Complete the puzzle review or deliberately continue with its warnings before creating artwork.', 'Choose the final puzzle set after artwork, then generate narration.', 'Generate narration and artwork before grounding.', 'Pass narration grounding or deliberately continue with its saved warnings before creating voice.', 'Generate voice before rendering a preview.', 'Render a preview before approval.', 'Approve the episode before final rendering.', 'Approve and render the final video before preparing upload details.'];
+  const requirements = [null, 'Generate puzzles first.', 'Go back to the Review stage to choose which puzzles to keep, or regenerate the failed ones, before creating artwork.', 'Choose the final puzzle set after artwork, then generate narration.', 'Generate narration and artwork before grounding.', 'Pass narration grounding or deliberately continue with its saved warnings before creating voice.', 'Generate voice before rendering a preview.', 'Render a preview before approval.', 'Approve the episode before final rendering.', 'Approve and render the final video before preparing upload details.'];
   return requirements[index];
 }
 function instructionKey(action) { return ({generate:'generate',review:'review',artwork:'artwork',narration:'narration','ground-narration':'grounding',speech:'speech'})[action]; }
@@ -226,15 +226,61 @@ function regenerateItem(e, path, puzzleNumber, stageIndex, label) {
     finally { busy = false; draw(); }
   };
 }
+function reviewFailures(e) {
+  return e.review?.findings?.filter(f => !f.fair || e.spec?.puzzles?.[f.puzzleNumber - 1]?.answerId !== f.independentlySolvedAnswerId) || [];
+}
+function reviewSelectionKey(e) { return `brain-booster-review-selection-${e.id}`; }
+function savedReviewSelection(e) {
+  const total = e.spec?.puzzles?.length || 0, failed = new Set(reviewFailures(e).map(f => f.puzzleNumber));
+  try {
+    const saved = JSON.parse(localStorage.getItem(reviewSelectionKey(e)) || 'null');
+    if (Array.isArray(saved)) return saved.filter(number => Number.isInteger(number) && number >= 1 && number <= total);
+  } catch { /* Fall back to the passed puzzles if browser storage is unavailable. */ }
+  return Array.from({length: total}, (_, index) => index + 1).filter(number => !failed.has(number));
+}
 function reviewDecision(e) {
   if (!e.review || reviewGatePassed(e)) return null;
+  const failures = reviewFailures(e), total = e.spec?.puzzles?.length || 0, passed = total - failures.length;
+  const byNumber = new Map(failures.map(f => [f.puzzleNumber, f]));
   const box = el('aside', null, 'review-decision');
-  if (!reviewCanBeOverridden(e)) {
-    box.append(el('h3', 'Resolve the failed puzzles'), el('p', 'Use the single batch action below. It creates a new version and replaces only the puzzles the reviewer rejected; your original episode remains unchanged.'));
-    return box;
-  }
-  box.append(el('h3', 'Choose the next path'), el('p', 'The reviewer agrees with every answer, but flagged quality concerns. You can run the review again, or continue with these saved warnings. Continuing does not make an OpenAI call.'));
-  addButton(box, 'Continue with review warnings', continueWithReviewWarnings(e), 'secondary', isWorking(e));
+  box.append(el('h3', 'Choose the puzzles for the next stage'), el('p', `${passed} of ${total} puzzles passed and are selected. `
+    + `Tick any failed puzzle you still want to keep, and untick any you want to drop. Continuing creates a new version with only the ticked puzzles; `
+    + `your original episode stays unchanged, and no OpenAI call is made.`));
+  const selectedNumbers = new Set(savedReviewSelection(e)); const list = el('div', null, 'selection-list'); const count = el('p', null, 'selection-count');
+  let button;
+  const update = () => {
+    const values = [...selectedNumbers].sort((a, b) => a - b); localStorage.setItem(reviewSelectionKey(e), JSON.stringify(values));
+    const keptFailed = values.filter(number => byNumber.has(number)).length;
+    count.textContent = `${values.length} of ${total} puzzles selected` + (keptFailed ? ` · ${keptFailed} failed ${keptFailed === 1 ? 'puzzle' : 'puzzles'} kept by your choice` : '');
+    if (button) { button.disabled = busy || isWorking(e) || values.length === 0; button.textContent = `Continue with ${values.length} selected ${values.length === 1 ? 'puzzle' : 'puzzles'}`; }
+  };
+  e.spec.puzzles.forEach((puzzle, index) => {
+    const number = index + 1, failure = byNumber.get(number);
+    const differentAnswer = failure && puzzle.answerId !== failure.independentlySolvedAnswerId;
+    const status = !failure ? 'Passed' : differentAnswer ? `Different answer (${failure.independentlySolvedAnswerId})` : 'Quality warning';
+    const label = el('label', null, 'selection-option'); const input = document.createElement('input'); input.type = 'checkbox'; input.checked = selectedNumbers.has(number);
+    input.onchange = () => { if (input.checked) selectedNumbers.add(number); else selectedNumbers.delete(number); update(); };
+    label.append(input, el('span', `Puzzle ${number}`, 'selection-number'), el('span', puzzle.title || puzzle.question, 'selection-title'), el('span', status, 'selection-status'));
+    if (failure) label.title = failure.notes || '';
+    list.append(label);
+    if (failure) list.append(el('p', `Reviewer: ${failure.notes || 'No note.'}` + (differentAnswer ? ' The reviewer solved this differently, so check the answer carefully before keeping it.' : ''), 'selection-note'));
+  });
+  button = addButton(box, 'Continue with selected puzzles', async () => {
+    if (busy) return;
+    const values = [...selectedNumbers].sort((a, b) => a - b);
+    busy = true; draw(); notice(`Creating a new version with ${values.length} selected puzzles…`);
+    try {
+      episode = await request('/' + e.id + '/review-selection', 'POST', {puzzleNumbers: values});
+      localStorage.removeItem(reviewSelectionKey(e));
+      selected = episode.id; location.hash = selected; step = firstOpenStep(episode);
+      localStorage.setItem(`brain-booster-step-${episode.id}`, String(step));
+      notice(`New version created with ${values.length} selected puzzles. The original is unchanged. You can now generate artwork when ready.`);
+    } catch (error) { notice(error.message); }
+    finally { busy = false; draw(); }
+  }, 'secondary');
+  box.append(list, count, button); update();
+  box.append(el('p', `Or replace the ${failures.length} failed ${failures.length === 1 ? 'puzzle' : 'puzzles'} with new ones (${failures.length} text-generation ${failures.length === 1 ? 'request' : 'requests'}). The next Review checks only the new puzzles; the passed ones keep their result.`));
+  addButton(box, `Regenerate ${failures.length} failed ${failures.length === 1 ? 'puzzle' : 'puzzles'}`, regenerateFailures(e, '/regenerate-failed-puzzles', 'puzzle', failures.length, 1), 'secondary', isWorking(e));
   return box;
 }
 function continueWithGroundingWarnings(e) {
@@ -455,14 +501,8 @@ function reviewOutput(e, pane) {
   outputTitle(pane, 'Generated result', 'Puzzle review');
   if (!e.review) return emptyOutput(pane, 'The independent fairness review will appear here.');
   const pass = isReviewed(e); const overridden = !!e.puzzleReviewOverridden;
-  pane.append(el('p', pass ? 'All puzzles passed the independent review.' : overridden ? 'You chose to continue with the saved review warnings.' : 'One or more puzzles need changes before artwork.', pass || overridden ? 'pass-note' : 'warning-note'));
-  const failures = e.review.findings?.filter(f => !f.fair || e.spec?.puzzles?.[f.puzzleNumber - 1]?.answerId !== f.independentlySolvedAnswerId) || [];
-  if (failures.length) {
-    const recovery = el('aside', null, 'review-decision');
-    recovery.append(el('h3', 'Regenerate every failed puzzle'), el('p', `This manually makes ${failures.length} text-generation ${failures.length === 1 ? 'request' : 'requests'}—one for each rejected puzzle—and opens a new version. Puzzles that passed are retained. Review will run only when you click it.`));
-    addButton(recovery, `Regenerate all ${failures.length} failed ${failures.length === 1 ? 'puzzle' : 'puzzles'}`, regenerateFailures(e, '/regenerate-failed-puzzles', 'puzzle', failures.length, 0), 'secondary', isWorking(e));
-    pane.append(recovery);
-  }
+  pane.append(el('p', pass ? 'All puzzles passed the independent review.' : overridden ? 'You chose to continue with the saved review warnings.' : 'Some puzzles need changes before artwork. Choose how to continue above.', pass || overridden ? 'pass-note' : 'warning-note'));
+  if (!pass && !overridden && reviewFailures(e).length) pane.append(el('p', 'Choose which puzzles to keep in the Review stage above, or regenerate the failed ones.', 'stage-description'));
   e.review.findings?.forEach(f => {
     const expected = e.spec?.puzzles?.[f.puzzleNumber - 1]?.answerId;
     const failed = !f.fair || expected !== f.independentlySolvedAnswerId;

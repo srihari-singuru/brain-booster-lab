@@ -9,6 +9,17 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.*;
 
 class StudioQualityTest {
+    @Test void formatReportMarksOnlyTheOverlongRevealForRepair() {
+        var p = PilotFixtures.kids().puzzles().getFirst();
+        String longReveal = "Suspect B! That wrist loop is bread, with the prize pretzel's crossed ends and salt on top!";
+        var tooLong = new EpisodeSpec("Case files", List.of(new EpisodeSpec.Puzzle(p.kind(), p.title(), p.setup(), p.question(),
+            p.facts(), p.choices(), p.answerId(), longReveal, p.sceneDescription(), p.thinkSeconds())));
+        assertThatThrownBy(tooLong::validateNewChoices).hasMessageContaining("Explanation is missing or too long (max 85)");
+        String report = StudioAi.formatReport(tooLong);
+        assertThat(report).contains("- explanation: " + longReveal.length() + " (max 85) NEEDS FIX");
+        assertThat(report.lines().filter(line -> line.endsWith("NEEDS FIX")).count()).isEqualTo(1);
+    }
+
     @Test void supportsUpToTwentyPuzzlesInEpisodeAndProductionSettings() {
         var settings = new EpisodeSettings("Puzzle Pop", 20, "text", "image", "narration", "speech", "cedar", 1);
         assertThatCode(settings::validate).doesNotThrowAnyException();
